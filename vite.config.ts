@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: './', // 新增這行：讓打包出來的檔案使用相對路徑
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
