@@ -32,6 +32,21 @@ export default function App(){
  const [quiz,setQuiz]=useState<Word[]>([]),[idx,setIdx]=useState(0),[answer,setAnswer]=useState(""),[result,setResult]=useState<"idle"|"correct"|"wrong">("idle"),[score,setScore]=useState(0),[done,setDone]=useState(false),[attempts,setAttempts]=useState(0);
  const [zh,setZh]=useState(""),[en,setEn]=useState(""),[bpmf,setBpmf]=useState(""),[wg,setWg]=useState(""),[ng,setNg]=useState(""),[inlineGroup,setInlineGroup]=useState(false),[newInlineGroup,setNewInlineGroup]=useState("");
  const [lookup,setLookup]=useState<"idle"|"loading"|"found"|"missing">("idle"); const input=useRef<HTMLInputElement>(null);
+ useEffect(()=>{
+  const viewport=window.visualViewport;
+  if(!viewport)return;
+  const syncViewport=()=>{
+   document.documentElement.style.setProperty("--visual-viewport-height",`${viewport.height}px`);
+   document.documentElement.style.setProperty("--visual-viewport-top",`${viewport.offsetTop}px`);
+  };
+  syncViewport();
+  viewport.addEventListener("resize",syncViewport);
+  viewport.addEventListener("scroll",syncViewport);
+  return()=>{
+   viewport.removeEventListener("resize",syncViewport);
+   viewport.removeEventListener("scroll",syncViewport);
+  };
+ },[]);
  useEffect(()=>{try{const s=localStorage.getItem("little-words-v1");if(s){const d=JSON.parse(s);if(d.words)setWords(d.words);if(d.groups)setGroups(d.groups);if(d.history)setHistory(d.history);if(d.groups?.length){setSelected([d.groups[0]?.id]);setWg(d.groups[0]?.id)}}}catch{}setReady(true)},[]);
  useEffect(()=>{if(ready)localStorage.setItem("little-words-v1",JSON.stringify({words,groups,history}))},[words,groups,history,ready]);
  const pool=useMemo(()=>words.filter(w=>selected.includes(w.group)),[words,selected]),cur=quiz[idx];
