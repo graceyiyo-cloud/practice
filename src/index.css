@@ -5,14 +5,14 @@
 .englishsearch .with{flex:1}.englishsearch .with input{margin-top:0}.englishsearch .with button{top:5px}
 .history-list{display:flex;flex-direction:column;gap:14px}.history-card{display:flex;justify-content:space-between;align-items:center;padding:20px 24px}.history-card h3{margin:0 0 6px;font-size:17px}.history-card p{margin:0;font-size:14px;color:var(--muted)}.history-score{text-align:right;background:#eef7f3;color:#397d69;padding:12px 18px;border-radius:14px}.history-score b{font-size:24px}.settings-card{padding:28px}.settings-card h3{margin:0 0 8px}.settings-card p{margin:0;color:var(--muted);font-size:14px}
 @media(max-width:760px){
-  .quiz:focus-within{position:fixed;top:var(--visual-viewport-top,0);left:0;z-index:50;width:100%;max-width:none;height:var(--visual-viewport-height,100dvh);margin:0;padding:max(12px,env(safe-area-inset-top)) 18px max(12px,env(safe-area-inset-bottom));border:0;border-radius:0;overflow:auto;background:var(--paper);box-shadow:none}
-  .quiz:focus-within .progress{margin:8px 0 12px}
-  .quiz:focus-within>p{display:none}
-  .quiz:focus-within .zh{margin-top:4px;font-size:42px;line-height:1.1}
-  .quiz:focus-within>.bpmf{margin-top:4px;font-size:15px}
-  .quiz:focus-within .speak{margin:10px auto 12px;padding:8px 16px}
-  .quiz:focus-within form{gap:8px}
-  .quiz:focus-within input{font-size:21px;padding:10px}
-  .quiz:focus-within form>.primary{padding:10px 18px}
-  .quiz:focus-within .feedback{margin-top:10px;padding:10px}
+  .quiz.answering{position:fixed;top:var(--visual-viewport-top,0);left:0;z-index:50;width:100%;max-width:none;height:var(--visual-viewport-height,100dvh);margin:0;padding:max(12px,env(safe-area-inset-top)) 18px max(12px,env(safe-area-inset-bottom));border:0;border-radius:0;overflow:auto;background:var(--paper);box-shadow:none}
+  .quiz.answering .progress{margin:8px 0 12px}
+  .quiz.answering>p{display:none}
+  .quiz.answering .zh{margin-top:4px;font-size:42px;line-height:1.1}
+  .quiz.answering>.bpmf{margin-top:4px;font-size:15px}
+  .quiz.answering .speak{margin:10px auto 12px;padding:8px 16px}
+  .quiz.answering form{gap:8px}
+  .quiz.answering input{font-size:21px;padding:10px}
+  .quiz.answering form>.primary{padding:10px 18px}
+  .quiz.answering .feedback{margin-top:10px;padding:10px}
 }
