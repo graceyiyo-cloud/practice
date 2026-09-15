@@ -12,6 +12,7 @@ import {
   CloudOff,
   LogIn,
   RefreshCw,
+  Trash2,
   UserRound,
   Volume2,
 } from "lucide-react";
@@ -1213,7 +1214,7 @@ function WordList({
             aria-label={`刪除${w.en}`}
             onClick={() => remove(w.id)}
           >
-            ×
+            <Trash2 size={17} />
           </button>
         </article>
       ))}

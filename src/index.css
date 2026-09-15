@@ -365,12 +365,18 @@ nav button.active {
 }
 .with button {
   position: absolute;
-  right: 5px;
-  top: 12px;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
   border: 0;
   background: #e3f2ec;
+  color: #397d69;
   border-radius: 8px;
-  padding: 7px;
+  padding: 0;
 }
 .with input {
   padding-right: 55px;
@@ -411,6 +417,10 @@ nav button.active {
   border: 0;
   border-radius: 11px;
   background: #e4f2ec;
+  color: #397d69;
+  display: grid;
+  place-items: center;
+  padding: 0;
 }
 .wordlist article b {
   font: 700 20px Georgia;
@@ -438,6 +448,18 @@ nav button.active {
   background: transparent;
   color: #a79b91;
   font-size: 27px;
+}
+.delete {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  justify-self: end;
+  border: 1px solid #eadfd4;
+  border-radius: 10px;
+  background: #fffaf5;
+  color: #aa7468;
+  padding: 0;
 }
 .addgroup {
   padding: 18px;
@@ -636,7 +658,23 @@ footer {
   margin-top: 0;
 }
 .englishsearch .with button {
-  top: 5px;
+  top: 50%;
+}
+.searchrow,
+.categoryrow {
+  align-items: center;
+  margin-top: 7px;
+}
+.searchrow input,
+.categoryrow select {
+  height: 45px;
+  margin-top: 0;
+}
+.searchbtn,
+.addcat {
+  height: 45px;
+  padding: 0 13px;
+  align-self: center;
 }
 .history-list {
   display: flex;
@@ -682,10 +720,10 @@ footer {
 .word-group-select {
   max-width: 150px;
   border: 1px solid #d9d0c4;
-  border-radius: 9px;
-  background: #fff;
-  color: #596577;
-  padding: 7px 28px 7px 9px;
+  border-radius: 10px;
+  background: #f4f8f6;
+  color: #47685d;
+  padding: 8px 30px 8px 11px;
   font-size: 12px;
   font-weight: 700;
 }
@@ -867,12 +905,23 @@ footer {
     padding: 10px;
   }
   .wordlist article {
-    grid-template-columns: 40px minmax(0, 1fr) 112px 32px;
-    gap: 8px;
+    grid-template-columns: 40px minmax(0, 1fr) 36px;
+    gap: 7px 10px;
+    align-items: start;
+    padding: 16px 3px;
   }
   .word-group-select {
-    width: 112px;
+    grid-column: 2;
+    grid-row: 2;
+    width: min(180px, 100%);
     max-width: none;
+  }
+  .wordlist .sound {
+    grid-row: 1 / 3;
+  }
+  .wordlist .delete {
+    grid-column: 3;
+    grid-row: 1;
   }
   .group-open {
     padding: 19px 8px 19px 18px;
@@ -896,10 +945,10 @@ footer {
 }
 @media (max-width: 480px) {
   .wordlist article {
-    grid-template-columns: 40px minmax(0, 1fr) 32px;
+    grid-template-columns: 40px minmax(0, 1fr) 36px;
   }
   .word-group-select {
-    grid-column: 2/4;
+    grid-column: 2;
     width: 100%;
     max-width: none;
   }
