@@ -241,14 +241,15 @@ nav button.active {
   color: var(--muted);
 }
 .zh {
-  font-family: "Bopomofo Ruby 1909", "Noto Serif TC", "DFKai-SB", serif;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   font-size: 58px;
   font-weight: 700;
   margin-top: 14px;
 }
 .bpmf {
   font-family:
-    "Bopomofo Ruby 1909", "Noto Sans Bopomofo", "DFKai-SB", sans-serif;
+    "Noto Sans Bopomofo", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
+    sans-serif;
 }
 .quiz > .bpmf {
   color: #8b776d;
