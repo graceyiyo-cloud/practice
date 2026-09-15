@@ -241,15 +241,13 @@ nav button.active {
   color: var(--muted);
 }
 .zh {
-  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font-family: inherit;
   font-size: 58px;
   font-weight: 700;
   margin-top: 14px;
 }
 .bpmf {
-  font-family:
-    "Noto Sans Bopomofo", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei",
-    sans-serif;
+  font-family: inherit;
 }
 .quiz > .bpmf {
   color: #8b776d;
