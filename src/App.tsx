@@ -182,6 +182,7 @@ export default function App() {
     "idle" | "loading" | "found" | "missing"
   >("idle");
   const input = useRef<HTMLInputElement>(null);
+  const lookupQuery = useRef("");
   const [activeCode, setActiveCode] = useState(""),
     [codeInput, setCodeInput] = useState(""),
     [savedCodes, setSavedCodes] = useState<string[]>([]),
@@ -387,7 +388,8 @@ export default function App() {
   };
   const searchWord = async () => {
     const q = zh.trim();
-    if (!q) return;
+    if (!q || lookupQuery.current === q) return;
+    lookupQuery.current = q;
     setLookup("loading");
     const local = dictionary.find((x) => x[0] === q);
     if (local) {
@@ -401,12 +403,13 @@ export default function App() {
         const parts = await Promise.all([...q].map(fetchBopomofo));
         if (parts.every(Boolean)) pronunciation = parts.join(" ");
       }
+      if (lookupQuery.current !== q) return;
       if (pronunciation) {
         setBpmf(pronunciation);
         setLookup("found");
       } else setLookup("missing");
     } catch {
-      setLookup("missing");
+      if (lookupQuery.current === q) setLookup("missing");
     }
   };
   const pushScreen = (screen: NavScreen, groupId?: string) =>
@@ -706,11 +709,13 @@ export default function App() {
                         setZh(e.target.value);
                         setBpmf("");
                         setLookup("idle");
+                        lookupQuery.current = "";
                       }}
+                      onBlur={() => void searchWord()}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          searchWord();
+                          void searchWord();
                         }
                       }}
                       placeholder="例如：蘋果"
