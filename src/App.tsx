@@ -12,6 +12,7 @@ import {
   CloudOff,
   LogIn,
   RefreshCw,
+  RotateCcw,
   Trash2,
   UserRound,
   Volume2,
@@ -169,7 +170,8 @@ export default function App() {
     [result, setResult] = useState<"idle" | "correct" | "wrong">("idle"),
     [score, setScore] = useState(0),
     [done, setDone] = useState(false),
-    [attempts, setAttempts] = useState(0);
+    [attempts, setAttempts] = useState(0),
+    [countedCurrent, setCountedCurrent] = useState(false);
   const [answerFocused, setAnswerFocused] = useState(false);
   const [reviewGroupId, setReviewGroupId] = useState<string | null>(null);
   const [zh, setZh] = useState(""),
@@ -430,6 +432,7 @@ export default function App() {
     setAnswer("");
     setResult("idle");
     setAttempts(0);
+    setCountedCurrent(false);
     setDone(false);
     setTimeout(() => speak(q[0].en), 150);
   };
@@ -440,12 +443,23 @@ export default function App() {
     if (ok) {
       input.current?.blur();
       setResult("correct");
-      setScore((s) => s + 1);
+      if (!countedCurrent) {
+        setScore((s) => s + 1);
+        setCountedCurrent(true);
+      }
     } else {
       setResult("wrong");
       setAttempts((a) => a + 1);
       setAnswer("");
     }
+  };
+  const repeatCurrent = () => {
+    if (!cur) return;
+    setAnswer("");
+    setResult("idle");
+    setAttempts(0);
+    setTimeout(() => speak(cur.en), 80);
+    setTimeout(() => input.current?.focus(), 120);
   };
   const next = () => {
     if (idx + 1 >= quiz.length) {
@@ -469,6 +483,7 @@ export default function App() {
     setAnswer("");
     setResult("idle");
     setAttempts(0);
+    setCountedCurrent(false);
     setTimeout(() => speak(quiz[n].en), 100);
     setTimeout(() => input.current?.focus(), 120);
   };
@@ -664,7 +679,20 @@ export default function App() {
                 <div className="feedback good">
                   <b>答對了！</b>
                   <span>{cur?.en}</span>
-                  <button onClick={next}>下一題 →</button>
+                  <div className="feedback-actions">
+                    <button
+                      type="button"
+                      className="repeat"
+                      onClick={repeatCurrent}
+                    >
+                      <RotateCcw size={17} />
+                      再練一次
+                    </button>
+                    <button type="button" onClick={next}>
+                      {idx + 1 >= quiz.length ? "查看結果" : "下一題"}
+                      <ArrowRight size={17} />
+                    </button>
+                  </div>
                 </div>
               )}
               {result === "wrong" && (
@@ -682,6 +710,7 @@ export default function App() {
                         input.current?.blur();
                         setAnswer(cur?.en || "");
                         setResult("correct");
+                        setCountedCurrent(true);
                       }}
                     >
                       看看答案

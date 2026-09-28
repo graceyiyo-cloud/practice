@@ -303,6 +303,21 @@ nav button.active {
   padding: 9px 13px;
   font-weight: 800;
 }
+.feedback-actions {
+  display: flex;
+  gap: 8px;
+}
+.feedback-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.feedback-actions .repeat {
+  border: 1px solid #b9dacd;
+  background: transparent;
+}
 .good {
   background: #dff2e9;
   color: #34745f;
@@ -563,6 +578,14 @@ footer {
   }
   .feedback button {
     width: 100%;
+  }
+  .feedback-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .feedback-actions button {
+    width: auto;
   }
   .cols {
     grid-template-columns: 1fr;
