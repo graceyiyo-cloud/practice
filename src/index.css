@@ -135,6 +135,44 @@ nav button.active {
   gap: 13px;
   margin: 36px 0 26px;
 }
+.mode-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 28px 0 0;
+}
+.mode-picker button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+.mode-picker button > svg {
+  flex: 0 0 auto;
+  color: #8c968f;
+}
+.mode-picker button.chosen {
+  border-color: var(--mint);
+  background: #edf7f2;
+  box-shadow: 0 0 0 2px #69ad9826;
+}
+.mode-picker button.chosen > svg {
+  color: #397d69;
+}
+.mode-picker span {
+  display: grid;
+  gap: 2px;
+}
+.mode-picker small {
+  color: var(--muted);
+  font-size: 12px;
+}
 .picks button {
   position: relative;
   text-align: left;
@@ -254,6 +292,15 @@ nav button.active {
   letter-spacing: 0.15em;
   font-size: 17px;
   margin-top: 8px;
+}
+.letter-gap {
+  margin: 20px auto 0;
+  color: var(--ink);
+  font-size: clamp(30px, 7vw, 44px);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 .speak {
   margin: 24px auto 28px;
@@ -563,6 +610,10 @@ footer {
   .picks {
     grid-template-columns: 1fr;
     margin: 28px 0 22px;
+  }
+  .mode-picker {
+    grid-template-columns: 1fr;
+    margin-top: 24px;
   }
   .quiz {
     padding: 28px 18px;

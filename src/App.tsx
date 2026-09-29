@@ -11,6 +11,8 @@ import {
   Cloud,
   CloudOff,
   LogIn,
+  PenLine,
+  Puzzle,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -23,6 +25,7 @@ type Word = { id: string; zh: string; en: string; bpmf: string; group: string };
 type Group = { id: string; name: string; color: string };
 type Tab = "practice" | "words" | "groups" | "history";
 type NavScreen = Tab | "quiz" | "review";
+type PracticeMode = "full" | "missing";
 type HistoryRecord = {
   id: string;
   timestamp: number;
@@ -157,6 +160,28 @@ const dictionary = [
 const seedGroups: Group[] = [];
 const seedWords: Word[] = [];
 
+const makeLetterGap = (word: string) => {
+  const letterIndexes = [...word]
+    .map((character, index) => ({ character, index }))
+    .filter(({ character }) => /[a-z]/i.test(character))
+    .map(({ index }) => index);
+  const letterCount = letterIndexes.length;
+  const missingCount = letterCount >= 7 ? 3 : letterCount >= 4 ? 2 : 1;
+  const usableIndexes =
+    letterCount > 2 ? letterIndexes.slice(1, -1) : letterIndexes;
+  const safeCount = Math.min(missingCount, usableIndexes.length);
+  const start = Math.max(0, Math.floor((usableIndexes.length - safeCount) / 2));
+  const missingIndexes = usableIndexes.slice(start, start + safeCount);
+  const missingSet = new Set(missingIndexes);
+  const characters = [...word];
+  return {
+    prompt: characters
+      .map((character, index) => (missingSet.has(index) ? "_" : character))
+      .join(""),
+    answer: missingIndexes.map((index) => characters[index]).join(""),
+  };
+};
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("practice"),
     [groups, setGroups] = useState<Group[]>(seedGroups),
@@ -164,6 +189,7 @@ export default function App() {
     [selected, setSelected] = useState<string[]>([]),
     [ready, setReady] = useState(false);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>("full");
   const [quiz, setQuiz] = useState<Word[]>([]),
     [idx, setIdx] = useState(0),
     [answer, setAnswer] = useState(""),
@@ -371,7 +397,8 @@ export default function App() {
       () => words.filter((w) => selected.includes(w.group)),
       [words, selected],
     ),
-    cur = quiz[idx];
+    cur = quiz[idx],
+    letterGap = cur ? makeLetterGap(cur.en) : { prompt: "", answer: "" };
   const speak = (text = cur?.en) => {
     if (!text || !("speechSynthesis" in window)) return;
     speechSynthesis.cancel();
@@ -439,7 +466,8 @@ export default function App() {
   const check = (e: FormEvent) => {
     e.preventDefault();
     if (!cur || !answer.trim()) return;
-    const ok = answer.trim().toLowerCase() === cur.en.toLowerCase();
+    const expected = practiceMode === "missing" ? letterGap.answer : cur.en;
+    const ok = answer.trim().toLowerCase() === expected.toLowerCase();
     if (ok) {
       input.current?.blur();
       setResult("correct");
@@ -595,6 +623,32 @@ export default function App() {
                   <small>分</small>
                 </div>
               )}
+              <div className="mode-picker" aria-label="選擇練習方式">
+                <button
+                  type="button"
+                  className={practiceMode === "full" ? "chosen" : ""}
+                  onClick={() => setPracticeMode("full")}
+                  aria-pressed={practiceMode === "full"}
+                >
+                  <PenLine size={22} />
+                  <span>
+                    <b>完整拼字</b>
+                    <small>看中文，寫出完整英文</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={practiceMode === "missing" ? "chosen" : ""}
+                  onClick={() => setPracticeMode("missing")}
+                  aria-pressed={practiceMode === "missing"}
+                >
+                  <Puzzle size={22} />
+                  <span>
+                    <b>字母填空</b>
+                    <small>看提示，填入中間空缺</small>
+                  </span>
+                </button>
+              </div>
               <div className="picks">
                 {groups.map((g) => {
                   const on = selected.includes(g.id);
@@ -640,9 +694,18 @@ export default function App() {
               <div className="progress">
                 <i style={{ width: `${((idx + 1) / quiz.length) * 100}%` }} />
               </div>
-              <p>看中文，寫出完整英文單字</p>
+              <p>
+                {practiceMode === "missing"
+                  ? "看提示，填入空缺的英文字母"
+                  : "看中文，寫出完整英文單字"}
+              </p>
               <div className="zh">{cur?.zh}</div>
               <div className="bpmf">{cur?.bpmf}</div>
+              {practiceMode === "missing" && (
+                <div className="letter-gap" aria-label={`單字提示 ${letterGap.prompt}`}>
+                  {letterGap.prompt}
+                </div>
+              )}
               <button className="speak" onClick={() => speak()}>
                     <Volume2 size={18} /> 再聽一次
               </button>
@@ -657,7 +720,17 @@ export default function App() {
                     setAnswer(e.target.value);
                     if (result === "wrong") setResult("idle");
                   }}
-                  placeholder="在這裡輸入英文"
+                  maxLength={
+                    practiceMode === "missing" ? letterGap.answer.length : undefined
+                  }
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder={
+                    practiceMode === "missing"
+                      ? `填入 ${letterGap.answer.length} 個字母`
+                      : "在這裡輸入英文"
+                  }
                 />
                 {result === "idle" && (
                   <button
@@ -708,7 +781,11 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         input.current?.blur();
-                        setAnswer(cur?.en || "");
+                        setAnswer(
+                          practiceMode === "missing"
+                            ? letterGap.answer
+                            : cur?.en || "",
+                        );
                         setResult("correct");
                         setCountedCurrent(true);
                       }}
