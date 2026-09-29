@@ -160,7 +160,8 @@ const dictionary = [
 const seedGroups: Group[] = [];
 const seedWords: Word[] = [];
 
-const makeLetterGap = (word: string) => {
+const makeLetterGap = (word: string, seedText = word) => {
+  const characters = [...word];
   const letterIndexes = [...word]
     .map((character, index) => ({ character, index }))
     .filter(({ character }) => /[a-z]/i.test(character))
@@ -170,15 +171,38 @@ const makeLetterGap = (word: string) => {
   const usableIndexes =
     letterCount > 2 ? letterIndexes.slice(1, -1) : letterIndexes;
   const safeCount = Math.min(missingCount, usableIndexes.length);
-  const start = Math.max(0, Math.floor((usableIndexes.length - safeCount) / 2));
-  const missingIndexes = usableIndexes.slice(start, start + safeCount);
+  let seed = [...seedText].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    2166136261,
+  );
+  const shuffled = [...usableIndexes];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const swapIndex = seed % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex],
+      shuffled[index],
+    ];
+  }
+  let missingIndexes = shuffled.slice(0, safeCount).sort((a, b) => a - b);
+  const allConsecutive = missingIndexes.every(
+    (value, index) => index === 0 || value === missingIndexes[index - 1] + 1,
+  );
+  if (safeCount > 1 && allConsecutive && usableIndexes.length > safeCount) {
+    missingIndexes = Array.from({ length: safeCount }, (_, index) =>
+      usableIndexes[
+        Math.round((index * (usableIndexes.length - 1)) / (safeCount - 1))
+      ],
+    );
+  }
   const missingSet = new Set(missingIndexes);
-  const characters = [...word];
   return {
     prompt: characters
       .map((character, index) => (missingSet.has(index) ? "_" : character))
       .join(""),
     answer: missingIndexes.map((index) => characters[index]).join(""),
+    characters,
+    missingIndexes,
   };
 };
 
@@ -193,6 +217,7 @@ export default function App() {
   const [quiz, setQuiz] = useState<Word[]>([]),
     [idx, setIdx] = useState(0),
     [answer, setAnswer] = useState(""),
+    [gapAnswers, setGapAnswers] = useState<string[]>([]),
     [result, setResult] = useState<"idle" | "correct" | "wrong">("idle"),
     [score, setScore] = useState(0),
     [done, setDone] = useState(false),
@@ -211,6 +236,7 @@ export default function App() {
     "idle" | "loading" | "found" | "missing"
   >("idle");
   const input = useRef<HTMLInputElement>(null);
+  const gapInputs = useRef<Array<HTMLInputElement | null>>([]);
   const lookupQuery = useRef("");
   const [activeCode, setActiveCode] = useState(""),
     [codeInput, setCodeInput] = useState(""),
@@ -398,7 +424,13 @@ export default function App() {
       [words, selected],
     ),
     cur = quiz[idx],
-    letterGap = cur ? makeLetterGap(cur.en) : { prompt: "", answer: "" };
+    letterGap = cur
+      ? makeLetterGap(cur.en, `${cur.id}:${idx}`)
+      : { prompt: "", answer: "", characters: [], missingIndexes: [] };
+  const focusAnswer = () => {
+    if (practiceMode === "missing") gapInputs.current[0]?.focus();
+    else input.current?.focus();
+  };
   const speak = (text = cur?.en) => {
     if (!text || !("speechSynthesis" in window)) return;
     speechSynthesis.cancel();
@@ -457,6 +489,7 @@ export default function App() {
     setIdx(0);
     setScore(0);
     setAnswer("");
+    setGapAnswers([]);
     setResult("idle");
     setAttempts(0);
     setCountedCurrent(false);
@@ -465,11 +498,15 @@ export default function App() {
   };
   const check = (e: FormEvent) => {
     e.preventDefault();
-    if (!cur || !answer.trim()) return;
+    if (!cur) return;
     const expected = practiceMode === "missing" ? letterGap.answer : cur.en;
-    const ok = answer.trim().toLowerCase() === expected.toLowerCase();
+    const submitted =
+      practiceMode === "missing" ? gapAnswers.join("") : answer.trim();
+    if (!submitted || submitted.length !== expected.length) return;
+    const ok = submitted.toLowerCase() === expected.toLowerCase();
     if (ok) {
       input.current?.blur();
+      gapInputs.current.forEach((element) => element?.blur());
       setResult("correct");
       if (!countedCurrent) {
         setScore((s) => s + 1);
@@ -479,15 +516,18 @@ export default function App() {
       setResult("wrong");
       setAttempts((a) => a + 1);
       setAnswer("");
+      setGapAnswers([]);
+      setTimeout(focusAnswer, 40);
     }
   };
   const repeatCurrent = () => {
     if (!cur) return;
     setAnswer("");
+    setGapAnswers([]);
     setResult("idle");
     setAttempts(0);
     setTimeout(() => speak(cur.en), 80);
-    setTimeout(() => input.current?.focus(), 120);
+    setTimeout(focusAnswer, 120);
   };
   const next = () => {
     if (idx + 1 >= quiz.length) {
@@ -509,11 +549,12 @@ export default function App() {
     const n = idx + 1;
     setIdx(n);
     setAnswer("");
+    setGapAnswers([]);
     setResult("idle");
     setAttempts(0);
     setCountedCurrent(false);
     setTimeout(() => speak(quiz[n].en), 100);
-    setTimeout(() => input.current?.focus(), 120);
+    setTimeout(focusAnswer, 120);
   };
   const saveWord = (e: FormEvent) => {
     e.preventDefault();
@@ -701,37 +742,88 @@ export default function App() {
               </p>
               <div className="zh">{cur?.zh}</div>
               <div className="bpmf">{cur?.bpmf}</div>
-              {practiceMode === "missing" && (
-                <div className="letter-gap" aria-label={`單字提示 ${letterGap.prompt}`}>
-                  {letterGap.prompt}
-                </div>
-              )}
               <button className="speak" onClick={() => speak()}>
                     <Volume2 size={18} /> 再聽一次
               </button>
-              <form onSubmit={check}>
-                <input
-                  ref={input}
-                  autoFocus
-                  value={answer}
-                  onFocus={() => setAnswerFocused(true)}
-                  onBlur={() => setAnswerFocused(false)}
-                  onChange={(e) => {
-                    setAnswer(e.target.value);
-                    if (result === "wrong") setResult("idle");
-                  }}
-                  maxLength={
-                    practiceMode === "missing" ? letterGap.answer.length : undefined
-                  }
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  placeholder={
-                    practiceMode === "missing"
-                      ? `填入 ${letterGap.answer.length} 個字母`
-                      : "在這裡輸入英文"
-                  }
-                />
+              <form
+                className={practiceMode === "missing" ? "missing-form" : ""}
+                onSubmit={check}
+              >
+                {practiceMode === "missing" ? (
+                  <div
+                    className="inline-gap"
+                    aria-label={`單字提示 ${letterGap.prompt}`}
+                  >
+                    {letterGap.characters.map((character, characterIndex) => {
+                      const slot = letterGap.missingIndexes.indexOf(characterIndex);
+                      if (slot < 0)
+                        return (
+                          <span key={characterIndex}>
+                            {character === " " ? "\u00a0" : character}
+                          </span>
+                        );
+                      return (
+                        <input
+                          key={characterIndex}
+                          ref={(element) => {
+                            gapInputs.current[slot] = element;
+                          }}
+                          autoFocus={slot === 0}
+                          value={gapAnswers[slot] || ""}
+                          maxLength={1}
+                          disabled={result === "correct"}
+                          aria-label={`第 ${slot + 1} 個空缺字母`}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          onFocus={() => setAnswerFocused(true)}
+                          onBlur={() => setAnswerFocused(false)}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Backspace" &&
+                              !gapAnswers[slot] &&
+                              slot > 0
+                            )
+                              gapInputs.current[slot - 1]?.focus();
+                          }}
+                          onChange={(event) => {
+                            const value = event.target.value
+                              .replace(/[^a-z]/gi, "")
+                              .slice(-1)
+                              .toLowerCase();
+                            setGapAnswers((current) => {
+                              const nextAnswers = Array.from(
+                                { length: letterGap.missingIndexes.length },
+                                (_, index) => current[index] || "",
+                              );
+                              nextAnswers[slot] = value;
+                              return nextAnswers;
+                            });
+                            if (result === "wrong") setResult("idle");
+                            if (value && slot + 1 < letterGap.missingIndexes.length)
+                              gapInputs.current[slot + 1]?.focus();
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    ref={input}
+                    autoFocus
+                    value={answer}
+                    onFocus={() => setAnswerFocused(true)}
+                    onBlur={() => setAnswerFocused(false)}
+                    onChange={(e) => {
+                      setAnswer(e.target.value);
+                      if (result === "wrong") setResult("idle");
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="在這裡輸入英文"
+                  />
+                )}
                 {result === "idle" && (
                   <button
                     type="button"
@@ -781,11 +873,14 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         input.current?.blur();
+                        gapInputs.current.forEach((element) => element?.blur());
                         setAnswer(
                           practiceMode === "missing"
-                            ? letterGap.answer
+                            ? ""
                             : cur?.en || "",
                         );
+                        if (practiceMode === "missing")
+                          setGapAnswers([...letterGap.answer]);
                         setResult("correct");
                         setCountedCurrent(true);
                       }}

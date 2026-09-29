@@ -293,14 +293,42 @@ nav button.active {
   font-size: 17px;
   margin-top: 8px;
 }
-.letter-gap {
-  margin: 20px auto 0;
+.quiz form.missing-form {
+  display: grid;
+  gap: 16px;
+}
+.inline-gap {
+  display: flex;
+  justify-content: center;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.12em;
+  min-height: 62px;
   color: var(--ink);
-  font-size: clamp(30px, 7vw, 44px);
+  font-size: clamp(34px, 8vw, 48px);
   font-weight: 800;
-  letter-spacing: 0.14em;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  line-height: 1;
+}
+.quiz .inline-gap input {
+  flex: 0 0 auto;
+  width: 0.86em;
+  height: 1.08em;
+  border: 0;
+  border-bottom: 4px solid #77b5a3;
+  border-radius: 4px 4px 0 0;
+  padding: 0;
+  background: #edf7f2;
+  color: var(--ink);
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  caret-color: var(--coral);
+}
+.quiz .inline-gap input:focus {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px #e9776324;
 }
 .speak {
   margin: 24px auto 28px;
@@ -969,6 +997,13 @@ footer {
   .quiz.answering input {
     font-size: 21px;
     padding: 10px;
+  }
+  .quiz.answering .inline-gap {
+    font-size: 40px;
+  }
+  .quiz.answering .inline-gap input {
+    padding: 0;
+    font-size: inherit;
   }
   .quiz.answering form > .primary {
     padding: 10px 18px;
