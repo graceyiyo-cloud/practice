@@ -390,7 +390,7 @@ nav button.active {
   border: 0;
   border-bottom: 4px solid #77b5a3;
   border-radius: 4px 4px 0 0;
-  padding: 0;
+  padding: 0.11em 0 0;
   background: #edf7f2;
   color: var(--ink);
   font-size: inherit;
@@ -1076,7 +1076,7 @@ footer {
     font-size: 40px;
   }
   .quiz.answering .inline-gap input {
-    padding: 0;
+    padding: 0.11em 0 0;
     font-size: inherit;
   }
   .quiz.answering form > .primary {
