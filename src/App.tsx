@@ -579,7 +579,14 @@ export default function App() {
     if (!cur) return;
     const expected = practiceMode === "missing" ? letterGap.answer : cur.en;
     const submitted =
-      practiceMode === "missing" ? gapAnswers.join("") : answer.trim();
+      practiceMode === "missing"
+        ? letterGap.missingIndexes
+            .map(
+              (_, slot) =>
+                gapInputs.current[slot]?.value || gapAnswers[slot] || "",
+            )
+            .join("")
+        : answer.trim();
     if (!submitted || submitted.length !== expected.length) return;
     const ok = submitted.toLowerCase() === expected.toLowerCase();
     if (ok) {
@@ -930,7 +937,11 @@ export default function App() {
                     className="primary"
                     onPointerDown={(e) => {
                       e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
+                      const form = e.currentTarget.form;
+                      if (practiceMode === "missing") {
+                        gapInputs.current.forEach((element) => element?.blur());
+                        window.setTimeout(() => form?.requestSubmit(), 40);
+                      } else form?.requestSubmit();
                     }}
                     onClick={(e) => {
                       if (e.detail === 0) e.currentTarget.form?.requestSubmit();
