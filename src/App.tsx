@@ -36,7 +36,12 @@ type HistoryRecord = {
   groupNames: string[];
   groupIds?: string[];
 };
-type CloudData = { words: Word[]; groups: Group[]; history: HistoryRecord[] };
+type CloudData = {
+  words: Word[];
+  groups: Group[];
+  history: HistoryRecord[];
+  completedGroupIds?: string[];
+};
 type SyncStatus = "idle" | "loading" | "syncing" | "synced" | "offline";
 const CODE_LIST_KEY = "little-words-codes-v1",
   ACTIVE_CODE_KEY = "little-words-active-code-v1",
@@ -218,6 +223,7 @@ export default function App() {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [practiceMode, setPracticeMode] = useState<PracticeMode>("full");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [completedGroupIds, setCompletedGroupIds] = useState<string[]>([]);
   const [quiz, setQuiz] = useState<Word[]>([]),
     [idx, setIdx] = useState(0),
     [answer, setAnswer] = useState(""),
@@ -318,17 +324,18 @@ export default function App() {
     const nextWords = Array.isArray(d.words) ? d.words : [];
     const nextGroups = Array.isArray(d.groups) ? d.groups : [];
     const nextHistory = Array.isArray(d.history) ? d.history : [];
+    const nextCompletedGroupIds = Array.isArray(d.completedGroupIds)
+      ? d.completedGroupIds.filter((id) =>
+          nextGroups.some((group) => group.id === id),
+        )
+      : [];
     const firstPending = nextGroups.find(
-      (group) =>
-        !nextHistory.some(
-          (record) =>
-            record.groupIds?.includes(group.id) ||
-            (!record.groupIds?.length && record.groupNames.includes(group.name)),
-        ),
+      (group) => !nextCompletedGroupIds.includes(group.id),
     );
     setWords(nextWords);
     setGroups(nextGroups);
     setHistory(nextHistory);
+    setCompletedGroupIds(nextCompletedGroupIds);
     setSelected(firstPending ? [firstPending.id] : []);
     setWg(nextGroups[0]?.id || "");
   };
@@ -403,7 +410,7 @@ export default function App() {
   };
   useEffect(() => {
     if (!ready || !activeCode || !syncReady.current) return;
-    const payload = { words, groups, history };
+    const payload = { words, groups, history, completedGroupIds };
     localStorage.setItem(cacheKey(activeCode), JSON.stringify(payload));
     setSyncStatus("syncing");
     window.clearTimeout(syncTimer.current);
@@ -421,7 +428,7 @@ export default function App() {
       }
     }, 700);
     return () => window.clearTimeout(syncTimer.current);
-  }, [words, groups, history, ready, activeCode]);
+  }, [words, groups, history, completedGroupIds, ready, activeCode]);
   const switchCode = () => {
     syncReady.current = false;
     setActiveCode("");
@@ -440,43 +447,62 @@ export default function App() {
     letterGap = cur
       ? makeLetterGap(cur.en, `${cur.id}:${idx}`)
       : { prompt: "", answer: "", characters: [], missingIndexes: [] };
-  const completedGroupIds = useMemo(
-    () =>
-      new Set(
-        groups
-          .filter((group) =>
-            history.some(
-              (record) =>
-                record.groupIds?.includes(group.id) ||
-                (!record.groupIds?.length && record.groupNames.includes(group.name)),
-            ),
-          )
-          .map((group) => group.id),
-      ),
-    [groups, history],
+  const pendingGroups = groups.filter(
+    (group) => !completedGroupIds.includes(group.id),
   );
-  const pendingGroups = groups.filter((group) => !completedGroupIds.has(group.id));
-  const completedGroups = groups.filter((group) => completedGroupIds.has(group.id));
-  const renderGroupPick = (group: Group) => {
+  const completedGroups = groups.filter((group) =>
+    completedGroupIds.includes(group.id),
+  );
+  const moveGroupCompletion = (groupId: string, completed: boolean) => {
+    setCompletedGroupIds((current) =>
+      completed
+        ? current.includes(groupId)
+          ? current
+          : [...current, groupId]
+        : current.filter((id) => id !== groupId),
+    );
+    setSelected((current) => current.filter((id) => id !== groupId));
+  };
+  const renderGroupPick = (group: Group, completed = false) => {
     const on = selected.includes(group.id);
     return (
-      <button
+      <article
         key={group.id}
-        className={on ? "chosen" : ""}
+        className={`pick-card${on ? " chosen" : ""}`}
         style={{ "--tone": group.color } as React.CSSProperties}
-        onClick={() =>
-          setSelected((current) =>
-            on
-              ? current.filter((id) => id !== group.id)
-              : [...current, group.id],
-          )
-        }
       >
-        <i />
-        <b>{group.name}</b>
-        <small>{words.filter((word) => word.group === group.id).length} 個單字</small>
-        {on && <em>✓</em>}
-      </button>
+        <button
+          type="button"
+          className="pick-select"
+          onClick={() =>
+            setSelected((current) =>
+              on
+                ? current.filter((id) => id !== group.id)
+                : [...current, group.id],
+            )
+          }
+        >
+          <i />
+          <b>{group.name}</b>
+          <small>
+            {words.filter((word) => word.group === group.id).length} 個單字
+          </small>
+          {on && <em>✓</em>}
+        </button>
+        <button
+          type="button"
+          className="completion-move"
+          onClick={() => moveGroupCompletion(group.id, !completed)}
+          aria-label={
+            completed
+              ? `將${group.name}移回尚未完成`
+              : `將${group.name}移到已完成`
+          }
+        >
+          {completed ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
+          {completed ? "移回尚未完成" : "移到已完成"}
+        </button>
+      </article>
     );
   };
   const focusAnswer = () => {
@@ -649,7 +675,7 @@ export default function App() {
   };
   const handleExport = () => {
     const blob = new Blob(
-      [JSON.stringify({ words, groups, history }, null, 2)],
+      [JSON.stringify({ words, groups, history, completedGroupIds }, null, 2)],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -670,6 +696,9 @@ export default function App() {
           setWords(d.words);
           setGroups(d.groups);
           setHistory(d.history || []);
+          setCompletedGroupIds(
+            Array.isArray(d.completedGroupIds) ? d.completedGroupIds : [],
+          );
           alert("還原成功！");
         }
       } catch {
@@ -750,7 +779,9 @@ export default function App() {
                     <small>{pendingGroups.length} 個分類</small>
                   </div>
                   {pendingGroups.length ? (
-                    <div className="picks">{pendingGroups.map(renderGroupPick)}</div>
+                    <div className="picks">
+                      {pendingGroups.map((group) => renderGroupPick(group))}
+                    </div>
                   ) : (
                     <p className="empty-groups">所有分類都已經完成一輪練習。</p>
                   )}
@@ -774,7 +805,9 @@ export default function App() {
                       </button>
                       {showCompleted && (
                         <div className="picks completed-picks">
-                          {completedGroups.map(renderGroupPick)}
+                          {completedGroups.map((group) =>
+                            renderGroupPick(group, true),
+                          )}
                         </div>
                       )}
                     </div>
@@ -1179,6 +1212,9 @@ export default function App() {
                           ),
                         );
                         setGroups((s) => s.filter((x) => x.id !== g.id));
+                        setCompletedGroupIds((ids) =>
+                          ids.filter((id) => id !== g.id),
+                        );
                         setWg(f.id);
                       }}
                     >

@@ -223,34 +223,40 @@ nav button.active {
 .practice-groups .completed-picks {
   margin-bottom: 0;
 }
-.picks button {
+.pick-card {
   position: relative;
-  text-align: left;
   border: 1px solid var(--line);
   border-radius: 17px;
   background: #fff;
-  padding: 18px;
+  overflow: hidden;
+}
+.pick-card.chosen {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone) 25%, transparent);
+}
+.pick-select {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 16px 18px 12px;
   display: grid;
   grid-template-columns: 13px 1fr;
   gap: 3px 10px;
   color: var(--ink);
+  text-align: left;
 }
-.picks button.chosen {
-  border-color: var(--tone);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone) 25%, transparent);
-}
-.picks i {
+.pick-select i {
   width: 11px;
   height: 11px;
   border-radius: 50%;
   background: var(--tone);
   margin-top: 5px;
 }
-.picks small {
+.pick-select small {
   grid-column: 2;
   color: var(--muted);
 }
-.picks em {
+.pick-select em {
   position: absolute;
   right: 12px;
   top: 12px;
@@ -262,6 +268,24 @@ nav button.active {
   background: var(--tone);
   color: #fff;
   font-style: normal;
+}
+.completion-move {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  border-top: 1px solid #eee8df;
+  background: #fbfaf6;
+  color: #62756e;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.completion-move:hover {
+  background: #f1f7f4;
+  color: #397d69;
 }
 .primary {
   border: 0;
