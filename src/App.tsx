@@ -329,7 +329,7 @@ export default function App() {
     setWords(nextWords);
     setGroups(nextGroups);
     setHistory(nextHistory);
-    setSelected(firstPending ? [firstPending.id] : nextGroups[0] ? [nextGroups[0].id] : []);
+    setSelected(firstPending ? [firstPending.id] : []);
     setWg(nextGroups[0]?.id || "");
   };
   const loginWithCode = async (raw: string) => {
