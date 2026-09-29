@@ -173,6 +173,56 @@ nav button.active {
   color: var(--muted);
   font-size: 12px;
 }
+.practice-groups {
+  margin-top: 30px;
+}
+.group-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink);
+  font-weight: 800;
+  text-align: left;
+}
+.group-section-title small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.practice-groups .picks {
+  margin: 12px 0 20px;
+}
+.empty-groups {
+  margin: 12px 0 20px;
+  padding: 16px;
+  border: 1px dashed #bfd8cf;
+  border-radius: 14px;
+  background: #f1f8f5;
+  color: #4e796b;
+}
+.completed-groups {
+  margin-bottom: 24px;
+}
+.completed-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  border: 1px solid #d8e5df;
+  border-radius: 13px;
+  background: #f2f7f4;
+  color: #507064;
+  font-weight: 800;
+}
+.completed-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.practice-groups .completed-picks {
+  margin-bottom: 0;
+}
 .picks button {
   position: relative;
   text-align: left;

@@ -8,6 +8,8 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudOff,
   LogIn,
@@ -32,6 +34,7 @@ type HistoryRecord = {
   score: number;
   total: number;
   groupNames: string[];
+  groupIds?: string[];
 };
 type CloudData = { words: Word[]; groups: Group[]; history: HistoryRecord[] };
 type SyncStatus = "idle" | "loading" | "syncing" | "synced" | "offline";
@@ -214,6 +217,7 @@ export default function App() {
     [ready, setReady] = useState(false);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [practiceMode, setPracticeMode] = useState<PracticeMode>("full");
+  const [showCompleted, setShowCompleted] = useState(false);
   const [quiz, setQuiz] = useState<Word[]>([]),
     [idx, setIdx] = useState(0),
     [answer, setAnswer] = useState(""),
@@ -313,10 +317,19 @@ export default function App() {
   const applyData = (d: Partial<CloudData>) => {
     const nextWords = Array.isArray(d.words) ? d.words : [];
     const nextGroups = Array.isArray(d.groups) ? d.groups : [];
+    const nextHistory = Array.isArray(d.history) ? d.history : [];
+    const firstPending = nextGroups.find(
+      (group) =>
+        !nextHistory.some(
+          (record) =>
+            record.groupIds?.includes(group.id) ||
+            (!record.groupIds?.length && record.groupNames.includes(group.name)),
+        ),
+    );
     setWords(nextWords);
     setGroups(nextGroups);
-    setHistory(Array.isArray(d.history) ? d.history : []);
-    setSelected(nextGroups[0] ? [nextGroups[0].id] : []);
+    setHistory(nextHistory);
+    setSelected(firstPending ? [firstPending.id] : nextGroups[0] ? [nextGroups[0].id] : []);
     setWg(nextGroups[0]?.id || "");
   };
   const loginWithCode = async (raw: string) => {
@@ -427,6 +440,45 @@ export default function App() {
     letterGap = cur
       ? makeLetterGap(cur.en, `${cur.id}:${idx}`)
       : { prompt: "", answer: "", characters: [], missingIndexes: [] };
+  const completedGroupIds = useMemo(
+    () =>
+      new Set(
+        groups
+          .filter((group) =>
+            history.some(
+              (record) =>
+                record.groupIds?.includes(group.id) ||
+                (!record.groupIds?.length && record.groupNames.includes(group.name)),
+            ),
+          )
+          .map((group) => group.id),
+      ),
+    [groups, history],
+  );
+  const pendingGroups = groups.filter((group) => !completedGroupIds.has(group.id));
+  const completedGroups = groups.filter((group) => completedGroupIds.has(group.id));
+  const renderGroupPick = (group: Group) => {
+    const on = selected.includes(group.id);
+    return (
+      <button
+        key={group.id}
+        className={on ? "chosen" : ""}
+        style={{ "--tone": group.color } as React.CSSProperties}
+        onClick={() =>
+          setSelected((current) =>
+            on
+              ? current.filter((id) => id !== group.id)
+              : [...current, group.id],
+          )
+        }
+      >
+        <i />
+        <b>{group.name}</b>
+        <small>{words.filter((word) => word.group === group.id).length} 個單字</small>
+        {on && <em>✓</em>}
+      </button>
+    );
+  };
   const focusAnswer = () => {
     if (practiceMode === "missing") gapInputs.current[0]?.focus();
     else input.current?.focus();
@@ -538,6 +590,7 @@ export default function App() {
           timestamp: Date.now(),
           score,
           total: quiz.length,
+          groupIds: [...selected],
           groupNames: groups
             .filter((g) => selected.includes(g.id))
             .map((g) => g.name),
@@ -690,30 +743,44 @@ export default function App() {
                   </span>
                 </button>
               </div>
-              <div className="picks">
-                {groups.map((g) => {
-                  const on = selected.includes(g.id);
-                  return (
-                    <button
-                      key={g.id}
-                      className={on ? "chosen" : ""}
-                      style={{ "--tone": g.color } as React.CSSProperties}
-                      onClick={() =>
-                        setSelected((s) =>
-                          on ? s.filter((x) => x !== g.id) : [...s, g.id],
-                        )
-                      }
-                    >
-                      <i />
-                      <b>{g.name}</b>
-                      <small>
-                        {words.filter((w) => w.group === g.id).length} 個單字
-                      </small>
-                      {on && <em>✓</em>}
-                    </button>
-                  );
-                })}
-              </div>
+              {groups.length > 0 && (
+                <div className="practice-groups">
+                  <div className="group-section-title">
+                    <span>尚未完成</span>
+                    <small>{pendingGroups.length} 個分類</small>
+                  </div>
+                  {pendingGroups.length ? (
+                    <div className="picks">{pendingGroups.map(renderGroupPick)}</div>
+                  ) : (
+                    <p className="empty-groups">所有分類都已經完成一輪練習。</p>
+                  )}
+                  {completedGroups.length > 0 && (
+                    <div className="completed-groups">
+                      <button
+                        type="button"
+                        className="completed-toggle"
+                        aria-expanded={showCompleted}
+                        onClick={() => setShowCompleted((open) => !open)}
+                      >
+                        <span>
+                          <CheckCircle2 size={18} />
+                          已完成 {completedGroups.length} 個分類
+                        </span>
+                        {showCompleted ? (
+                          <ChevronUp size={18} />
+                        ) : (
+                          <ChevronDown size={18} />
+                        )}
+                      </button>
+                      {showCompleted && (
+                        <div className="picks completed-picks">
+                          {completedGroups.map(renderGroupPick)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 className="primary"
                 disabled={!pool.length}
