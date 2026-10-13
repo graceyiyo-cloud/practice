@@ -736,98 +736,156 @@ export default function App() {
       />
       <div className="shell">
         {tab === "practice" &&
-          (!quiz.length || done ? (
-            <section className="setup card">
-              <span className="eyebrow">WORD PRACTICE</span>
-              <h2>{done ? "完成練習！" : "今天想練哪一些？"}</h2>
-              <p>
-                {done
-                  ? `答對 ${score} / ${quiz.length} 題，做得很好！`
-                  : groups.length === 0
-                    ? "目前沒有任何單字，請先去「單字」頁面新增資料！"
-                    : "可以同時選擇一個或多個單字分組。"}
-              </p>
-              {done && (
-                <div className="score">
-                  <b>{Math.round((score / quiz.length) * 100)}</b>
-                  <small>分</small>
-                </div>
-              )}
-              <div className="mode-picker" aria-label="選擇練習方式">
-                <button
-                  type="button"
-                  className={practiceMode === "full" ? "chosen" : ""}
-                  onClick={() => setPracticeMode("full")}
-                  aria-pressed={practiceMode === "full"}
-                >
-                  <PenLine size={22} />
-                  <span>
-                    <b>完整拼字</b>
-                    <small>看中文，寫出完整英文</small>
-                  </span>
+          (done ? (
+            <section className="result-card card">
+              <span className="eyebrow">PRACTICE COMPLETE</span>
+              <CheckCircle2 className="result-icon" size={42} />
+              <h2>完成練習！</h2>
+              <p>這次答對 {score} / {quiz.length} 題</p>
+              <div className="score">
+                <b>{Math.round((score / quiz.length) * 100)}</b>
+                <small>分</small>
+              </div>
+              <div className="result-summary">
+                <span>
+                  {practiceMode === "missing" ? "字母填空" : "完整拼字"}
+                </span>
+                <span>{quiz.length} 個單字</span>
+              </div>
+              <div className="result-actions">
+                <button className="primary" onClick={start}>
+                  <RotateCcw size={18} /> 再練相同內容
                 </button>
                 <button
-                  type="button"
-                  className={practiceMode === "missing" ? "chosen" : ""}
-                  onClick={() => setPracticeMode("missing")}
-                  aria-pressed={practiceMode === "missing"}
+                  className="secondary"
+                  onClick={() => {
+                    setQuiz([]);
+                    setDone(false);
+                    window.history.replaceState(
+                      { littleWords: true, screen: "practice" },
+                      "",
+                    );
+                  }}
                 >
-                  <Puzzle size={22} />
-                  <span>
-                    <b>字母填空</b>
-                    <small>看提示，填入中間空缺</small>
-                  </span>
+                  調整練習設定
                 </button>
               </div>
+            </section>
+          ) : !quiz.length ? (
+            <section className="setup card">
+              <span className="eyebrow">WORD PRACTICE</span>
+              <h2>開始今天的練習</h2>
+              <p>
+                {groups.length === 0
+                  ? "目前沒有任何單字，請先去「單字」頁面新增資料！"
+                  : "依序完成下面兩個選擇，就可以開始練習。"}
+              </p>
               {groups.length > 0 && (
-                <div className="practice-groups">
-                  <div className="group-section-title">
-                    <span>尚未完成</span>
-                    <small>{pendingGroups.length} 個分類</small>
-                  </div>
-                  {pendingGroups.length ? (
-                    <div className="picks">
-                      {pendingGroups.map((group) => renderGroupPick(group))}
+                <div className="practice-steps">
+                  <section className="setup-step">
+                    <div className="step-heading">
+                      <span className="step-number">1</span>
+                      <div>
+                        <h3>選擇要練習的分類</h3>
+                        <p>可同時選擇多個分類</p>
+                      </div>
+                      <small>已選 {selected.length} 個</small>
                     </div>
-                  ) : (
-                    <p className="empty-groups">所有分類都已經完成一輪練習。</p>
-                  )}
-                  {completedGroups.length > 0 && (
-                    <div className="completed-groups">
-                      <button
-                        type="button"
-                        className="completed-toggle"
-                        aria-expanded={showCompleted}
-                        onClick={() => setShowCompleted((open) => !open)}
-                      >
-                        <span>
-                          <CheckCircle2 size={18} />
-                          已完成 {completedGroups.length} 個分類
-                        </span>
-                        {showCompleted ? (
-                          <ChevronUp size={18} />
-                        ) : (
-                          <ChevronDown size={18} />
-                        )}
-                      </button>
-                      {showCompleted && (
-                        <div className="picks completed-picks">
-                          {completedGroups.map((group) =>
-                            renderGroupPick(group, true),
+                    <div className="practice-groups">
+                      <div className="group-section-title">
+                        <span>尚未完成</span>
+                        <small>{pendingGroups.length} 個分類</small>
+                      </div>
+                      {pendingGroups.length ? (
+                        <div className="picks">
+                          {pendingGroups.map((group) => renderGroupPick(group))}
+                        </div>
+                      ) : (
+                        <p className="empty-groups">所有分類都已經完成一輪練習。</p>
+                      )}
+                      {completedGroups.length > 0 && (
+                        <div className="completed-groups">
+                          <button
+                            type="button"
+                            className="completed-toggle"
+                            aria-expanded={showCompleted}
+                            onClick={() => setShowCompleted((open) => !open)}
+                          >
+                            <span>
+                              <CheckCircle2 size={18} />
+                              已完成 {completedGroups.length} 個分類
+                            </span>
+                            {showCompleted ? (
+                              <ChevronUp size={18} />
+                            ) : (
+                              <ChevronDown size={18} />
+                            )}
+                          </button>
+                          {showCompleted && (
+                            <div className="picks completed-picks">
+                              {completedGroups.map((group) =>
+                                renderGroupPick(group, true),
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
                     </div>
-                  )}
+                  </section>
+                  <section className="setup-step">
+                    <div className="step-heading">
+                      <span className="step-number">2</span>
+                      <div>
+                        <h3>選擇練習方式</h3>
+                        <p>每次練習可選擇一種方式</p>
+                      </div>
+                    </div>
+                    <div className="mode-picker" aria-label="選擇練習方式">
+                      <button
+                        type="button"
+                        className={practiceMode === "full" ? "chosen" : ""}
+                        onClick={() => setPracticeMode("full")}
+                        aria-pressed={practiceMode === "full"}
+                      >
+                        <PenLine size={22} />
+                        <span>
+                          <b>完整拼字</b>
+                          <small>看中文，寫出完整英文</small>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={practiceMode === "missing" ? "chosen" : ""}
+                        onClick={() => setPracticeMode("missing")}
+                        aria-pressed={practiceMode === "missing"}
+                      >
+                        <Puzzle size={22} />
+                        <span>
+                          <b>字母填空</b>
+                          <small>直接填入單字中的空缺</small>
+                        </span>
+                      </button>
+                    </div>
+                  </section>
+                  <div className="start-panel">
+                    <div>
+                      <span className="step-number">3</span>
+                      <p>
+                        {pool.length
+                          ? `已準備 ${pool.length} 個單字`
+                          : "請先選擇至少一個分類"}
+                      </p>
+                    </div>
+                    <button
+                      className="primary"
+                      disabled={!pool.length}
+                      onClick={start}
+                    >
+                      開始練習 <ArrowRight size={18} />
+                    </button>
+                  </div>
                 </div>
               )}
-              <button
-                className="primary"
-                disabled={!pool.length}
-                onClick={start}
-              >
-                {done ? "再練習一次" : `開始練習（${pool.length} 題）`}
-              </button>
             </section>
           ) : (
             <section
