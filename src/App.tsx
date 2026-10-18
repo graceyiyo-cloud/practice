@@ -514,7 +514,7 @@ export default function App() {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US";
-    u.rate = 0.72;
+    u.rate = 0.55;
     u.pitch = 1.05;
     speechSynthesis.speak(u);
   };
