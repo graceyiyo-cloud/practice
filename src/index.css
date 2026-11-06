@@ -2049,3 +2049,40 @@ select:focus-visible {
     padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 }
+/* Category list unfolds in place */
+.group-fold {
+  overflow: hidden;
+  border-left: 5px solid var(--tone);
+}
+.group-fold .group-row {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.group-fold .fold-chevron {
+  color: #b9ada0;
+  transition: transform 0.18s ease;
+}
+.group-fold.open .fold-chevron {
+  transform: rotate(180deg);
+}
+.fold-body {
+  padding: 0 18px 8px;
+  border-top: 1px solid #eee8df;
+}
+.fold-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 0 4px;
+  border-top: 1px solid #eee8df;
+}
+.fold-actions .link-button:disabled {
+  opacity: 0.4;
+}
+.link-button.muted {
+  color: var(--muted);
+  margin-left: auto;
+}

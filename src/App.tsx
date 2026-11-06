@@ -260,6 +260,7 @@ export default function App() {
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; undo?: () => void } | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const lastGroup = useRef("");
@@ -1162,28 +1163,82 @@ export default function App() {
               ) : (
                 <>
                   <div className="group-list">
-                    {shownGroups.map((g) => (
-                      <button
-                        key={g.id}
-                        className="card group-row"
-                        style={{ "--tone": g.color } as React.CSSProperties}
-                        onClick={() => openGroup(g.id)}
-                      >
-                        <i />
-                        <span>
-                          <b>{g.name}</b>
-                          <small>
-                            {countIn(g.id)} 個單字
-                            {completedGroupIds.includes(g.id) && (
-                              <em>
-                                <CheckCircle2 size={13} /> 已完成
-                              </em>
-                            )}
-                          </small>
-                        </span>
-                        <ChevronRight size={20} />
-                      </button>
-                    ))}
+                    {shownGroups.map((g) => {
+                      const open = expanded.includes(g.id);
+                      const groupWords = words.filter((w) => w.group === g.id);
+                      return (
+                        <div
+                          key={g.id}
+                          className={`card group-fold${open ? " open" : ""}`}
+                          style={{ "--tone": g.color } as React.CSSProperties}
+                        >
+                          {/* Tapping a category unfolds its words in place instead of opening a new page. */}
+                          <button
+                            className="group-row"
+                            aria-expanded={open}
+                            onClick={() =>
+                              setExpanded((ids) =>
+                                open ? ids.filter((id) => id !== g.id) : [...ids, g.id],
+                              )
+                            }
+                          >
+                            <i />
+                            <span>
+                              <b>{g.name}</b>
+                              <small>
+                                {groupWords.length} 個單字
+                                {completedGroupIds.includes(g.id) && (
+                                  <em>
+                                    <CheckCircle2 size={13} /> 已完成
+                                  </em>
+                                )}
+                              </small>
+                            </span>
+                            <ChevronDown size={20} className="fold-chevron" />
+                          </button>
+                          {open && (
+                            <div className="fold-body">
+                              {groupWords.length ? (
+                                groupWords.map((w) => (
+                                  <WordRow
+                                    key={w.id}
+                                    word={w}
+                                    speak={speak}
+                                    edit={() => openSheet({ kind: "word", id: w.id })}
+                                  />
+                                ))
+                              ) : (
+                                <p className="empty-note">這個分類還沒有單字</p>
+                              )}
+                              <div className="fold-actions">
+                                <button
+                                  className="link-button"
+                                  disabled={!groupWords.length}
+                                  onClick={() => {
+                                    setSelected([g.id]);
+                                    setQuiz([]);
+                                    setDone(false);
+                                    pushScreen("practice");
+                                    setTab("practice");
+                                  }}
+                                >
+                                  <ArrowRight size={16} /> 練習這組
+                                </button>
+                                <button
+                                  className="link-button"
+                                  onClick={() => openSheet({ kind: "word", group: g.id })}
+                                >
+                                  <Plus size={16} /> 新增單字
+                                </button>
+                                <button className="link-button muted" onClick={() => openGroup(g.id)}>
+                                  分類設定 <ChevronRight size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="book-actions">
                     <button className="secondary" onClick={() => openSheet({ kind: "group-new" })}>
