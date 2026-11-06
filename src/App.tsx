@@ -344,7 +344,8 @@ export default function App() {
           nextGroups.some((group) => group.id === id),
         )
       : [];
-    const firstPending = nextGroups.find(
+    // Lists show the newest category first, so start with the newest unfinished one.
+    const firstPending = [...nextGroups].reverse().find(
       (group) => !nextCompletedGroupIds.includes(group.id),
     );
     setWords(nextWords);
@@ -470,10 +471,12 @@ export default function App() {
       : { prompt: "", answer: "", characters: [], missingIndexes: [] };
   const countIn = (groupId: string) =>
     words.filter((word) => word.group === groupId).length;
-  const pendingGroups = groups.filter(
+  // Stored oldest → newest (older app versions append too); shown newest first.
+  const shownGroups = useMemo(() => [...groups].reverse(), [groups]);
+  const pendingGroups = shownGroups.filter(
     (group) => !completedGroupIds.includes(group.id),
   );
-  const completedGroups = groups.filter((group) =>
+  const completedGroups = shownGroups.filter((group) =>
     completedGroupIds.includes(group.id),
   );
   const setGroupCompleted = (groupIds: string[], completed: boolean) => {
@@ -680,12 +683,13 @@ export default function App() {
     setCompletedGroupIds((ids) => ids.filter((x) => x !== id));
     setSelected((ids) => ids.filter((x) => x !== id));
   };
+  // from/to are positions in the newest-first list the user sees.
   const reorderGroups = (from: number, to: number) =>
     setGroups((s) => {
-      const nextGroups = [...s];
-      const [moved] = nextGroups.splice(from, 1);
-      nextGroups.splice(to, 0, moved);
-      return nextGroups;
+      const shown = [...s].reverse();
+      const [moved] = shown.splice(from, 1);
+      shown.splice(to, 0, moved);
+      return shown.reverse();
     });
   const handleExport = () => {
     const blob = new Blob(
@@ -735,7 +739,7 @@ export default function App() {
   const openGroupData = openGroupId ? groups.find((g) => g.id === openGroupId) : undefined;
   const defaultGroup =
     (groups.some((g) => g.id === lastGroup.current) && lastGroup.current) ||
-    groups[0]?.id ||
+    shownGroups[0]?.id ||
     "";
   const query = search.trim().toLowerCase();
   const found = query
@@ -1158,7 +1162,7 @@ export default function App() {
               ) : (
                 <>
                   <div className="group-list">
-                    {groups.map((g) => (
+                    {shownGroups.map((g) => (
                       <button
                         key={g.id}
                         className="card group-row"
@@ -1244,7 +1248,7 @@ export default function App() {
           key={sheet.id || "new"}
           word={sheet.id ? words.find((w) => w.id === sheet.id) : undefined}
           group={sheet.group || defaultGroup}
-          groups={groups}
+          groups={shownGroups}
           speak={speak}
           createGroup={createGroup}
           close={closeSheet}
@@ -1288,7 +1292,7 @@ export default function App() {
         <DeleteGroupSheet
           group={groups.find((g) => g.id === sheet.id)!}
           count={countIn(sheet.id)}
-          others={groups.filter((g) => g.id !== sheet.id)}
+          others={shownGroups.filter((g) => g.id !== sheet.id)}
           close={closeSheet}
           confirm={(moveTo) => {
             const name = groups.find((g) => g.id === sheet.id)?.name;
@@ -1304,7 +1308,7 @@ export default function App() {
         <SheetFrame title="調整分類順序" close={closeSheet}>
           <p className="sheet-note">按住右邊把手上下拖曳</p>
           <Sortable
-            items={groups}
+            items={shownGroups}
             getKey={(g) => g.id}
             onMove={reorderGroups}
             className="order-list"
