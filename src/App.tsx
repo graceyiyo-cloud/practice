@@ -7,26 +7,49 @@ import React, { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
+  Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Cloud,
   CloudOff,
+  GripVertical,
+  History as HistoryIcon,
+  ListOrdered,
   LogIn,
   PenLine,
+  Pencil,
+  Plus,
   Puzzle,
   RefreshCw,
   RotateCcw,
+  Search,
   Trash2,
   UserRound,
   Volume2,
+  X,
 } from "lucide-react";
 import { cloudConfigured, supabase } from "./supabase";
 
 type Word = { id: string; zh: string; en: string; bpmf: string; group: string };
 type Group = { id: string; name: string; color: string };
-type Tab = "practice" | "words" | "groups" | "history";
-type NavScreen = Tab | "quiz" | "review";
+type Tab = "practice" | "book" | "history";
+type NavScreen = "practice" | "quiz" | "book" | "group" | "history";
+type Sheet =
+  | { kind: "word"; id?: string; group?: string }
+  | { kind: "group-new" }
+  | { kind: "group-rename"; id: string }
+  | { kind: "group-delete"; id: string }
+  | { kind: "group-order" };
+type NavState = {
+  littleWords?: boolean;
+  screen?: NavScreen;
+  groupId?: string;
+  sheet?: boolean;
+};
+const GROUP_COLORS = ["#e59a55", "#62adc0", "#c77caf", "#81a864"];
 type PracticeMode = "full" | "missing";
 type HistoryRecord = {
   id: string;
@@ -234,20 +257,14 @@ export default function App() {
     [attempts, setAttempts] = useState(0),
     [countedCurrent, setCountedCurrent] = useState(false);
   const [answerFocused, setAnswerFocused] = useState(false);
-  const [reviewGroupId, setReviewGroupId] = useState<string | null>(null);
-  const [zh, setZh] = useState(""),
-    [en, setEn] = useState(""),
-    [bpmf, setBpmf] = useState(""),
-    [wg, setWg] = useState(""),
-    [ng, setNg] = useState(""),
-    [inlineGroup, setInlineGroup] = useState(false),
-    [newInlineGroup, setNewInlineGroup] = useState("");
-  const [lookup, setLookup] = useState<
-    "idle" | "loading" | "found" | "missing"
-  >("idle");
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [search, setSearch] = useState("");
+  const [toast, setToast] = useState<{ message: string; undo?: () => void } | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const lastGroup = useRef("");
   const input = useRef<HTMLInputElement>(null);
   const gapInputs = useRef<Array<HTMLInputElement | null>>([]);
-  const lookupQuery = useRef("");
   const [activeCode, setActiveCode] = useState(""),
     [codeInput, setCodeInput] = useState(""),
     [savedCodes, setSavedCodes] = useState<string[]>([]),
@@ -276,32 +293,30 @@ export default function App() {
       viewport.removeEventListener("scroll", syncViewport);
     };
   }, []);
+  // Back closes the top layer first: sheet → category → tab → practice.
   useEffect(() => {
     window.history.replaceState({ littleWords: true, screen: "practice" }, "");
     const handleBack = (event: PopStateEvent) => {
-      const state = event.state as {
-        littleWords?: boolean;
-        screen?: NavScreen;
-        groupId?: string;
-      } | null;
-      const screen =
+      const state = event.state as NavState | null;
+      const screen: NavScreen =
         state?.littleWords && state.screen ? state.screen : "practice";
       setAnswerFocused(false);
       input.current?.blur();
+      if (!state?.sheet) setSheet(null);
       if (screen === "quiz") {
         setTab("practice");
-        setReviewGroupId(null);
+        setOpenGroupId(null);
         return;
       }
-      if (screen === "review") {
-        setTab("groups");
-        setReviewGroupId(state?.groupId || null);
+      if (screen === "group" || screen === "book") {
+        setTab("book");
+        setOpenGroupId(screen === "group" ? state?.groupId || null : null);
         setQuiz([]);
         setDone(false);
         return;
       }
       setTab(screen);
-      setReviewGroupId(null);
+      setOpenGroupId(null);
       if (screen === "practice") {
         setQuiz([]);
         setDone(false);
@@ -337,7 +352,6 @@ export default function App() {
     setHistory(nextHistory);
     setCompletedGroupIds(nextCompletedGroupIds);
     setSelected(firstPending ? [firstPending.id] : []);
-    setWg(nextGroups[0]?.id || "");
   };
   const loginWithCode = async (raw: string) => {
     const code = normalizeCode(raw);
@@ -435,9 +449,16 @@ export default function App() {
     setReady(false);
     setSyncStatus("idle");
     setTab("practice");
+    setOpenGroupId(null);
+    setSheet(null);
     setQuiz([]);
     setDone(false);
     window.history.replaceState({ littleWords: true, screen: "practice" }, "");
+  };
+  const showToast = (message: string, undo?: () => void) => {
+    window.clearTimeout(toastTimer.current);
+    setToast({ message, undo });
+    toastTimer.current = window.setTimeout(() => setToast(null), undo ? 5000 : 2200);
   };
   const pool = useMemo(
       () => words.filter((w) => selected.includes(w.group)),
@@ -447,62 +468,44 @@ export default function App() {
     letterGap = cur
       ? makeLetterGap(cur.en, `${cur.id}:${idx}`)
       : { prompt: "", answer: "", characters: [], missingIndexes: [] };
+  const countIn = (groupId: string) =>
+    words.filter((word) => word.group === groupId).length;
   const pendingGroups = groups.filter(
     (group) => !completedGroupIds.includes(group.id),
   );
   const completedGroups = groups.filter((group) =>
     completedGroupIds.includes(group.id),
   );
-  const moveGroupCompletion = (groupId: string, completed: boolean) => {
+  const setGroupCompleted = (groupIds: string[], completed: boolean) => {
     setCompletedGroupIds((current) =>
       completed
-        ? current.includes(groupId)
-          ? current
-          : [...current, groupId]
-        : current.filter((id) => id !== groupId),
+        ? [...current, ...groupIds.filter((id) => !current.includes(id))]
+        : current.filter((id) => !groupIds.includes(id)),
     );
-    setSelected((current) => current.filter((id) => id !== groupId));
   };
-  const renderGroupPick = (group: Group, completed = false) => {
+  const toggleSelected = (groupId: string) =>
+    setSelected((current) =>
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId],
+    );
+  const groupChip = (group: Group) => {
     const on = selected.includes(group.id);
+    const count = countIn(group.id);
     return (
-      <article
+      <button
         key={group.id}
-        className={`pick-card${on ? " chosen" : ""}`}
+        type="button"
+        className={`group-chip${on ? " chosen" : ""}`}
         style={{ "--tone": group.color } as React.CSSProperties}
+        aria-pressed={on}
+        disabled={!count}
+        onClick={() => toggleSelected(group.id)}
       >
-        <button
-          type="button"
-          className="pick-select"
-          onClick={() =>
-            setSelected((current) =>
-              on
-                ? current.filter((id) => id !== group.id)
-                : [...current, group.id],
-            )
-          }
-        >
-          <i />
-          <b>{group.name}</b>
-          <small>
-            {words.filter((word) => word.group === group.id).length} 個單字
-          </small>
-          {on && <em>✓</em>}
-        </button>
-        <button
-          type="button"
-          className="completion-move"
-          onClick={() => moveGroupCompletion(group.id, !completed)}
-          aria-label={
-            completed
-              ? `將${group.name}移回尚未完成`
-              : `將${group.name}移到已完成`
-          }
-        >
-          {completed ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
-          {completed ? "移回尚未完成" : "移到已完成"}
-        </button>
-      </article>
+        <span className="chip-check">{on ? <Check size={14} /> : null}</span>
+        <b>{group.name}</b>
+        <small>{count}</small>
+      </button>
     );
   };
   const focusAnswer = () => {
@@ -518,51 +521,39 @@ export default function App() {
     u.pitch = 1.05;
     speechSynthesis.speak(u);
   };
-  const fetchBopomofo = async (text: string) => {
-    const r = await fetch(
-      `https://www.moedict.tw/a/${encodeURIComponent(text)}.json`,
-    );
-    if (!r.ok) return "";
-    const d = await r.json();
-    return (d.h?.[0]?.b || "") as string;
-  };
-  const searchWord = async () => {
-    const q = zh.trim();
-    if (!q || lookupQuery.current === q) return;
-    lookupQuery.current = q;
-    setLookup("loading");
-    const local = dictionary.find((x) => x[0] === q);
-    if (local) {
-      setBpmf(local[2]);
-      setLookup("found");
-      return;
-    }
-    try {
-      let pronunciation = await fetchBopomofo(q);
-      if (!pronunciation && [...q].length > 1) {
-        const parts = await Promise.all([...q].map(fetchBopomofo));
-        if (parts.every(Boolean)) pronunciation = parts.join(" ");
-      }
-      if (lookupQuery.current !== q) return;
-      if (pronunciation) {
-        setBpmf(pronunciation);
-        setLookup("found");
-      } else setLookup("missing");
-    } catch {
-      if (lookupQuery.current === q) setLookup("missing");
-    }
-  };
+  const navState = () => (window.history.state || {}) as NavState;
   const pushScreen = (screen: NavScreen, groupId?: string) =>
     window.history.pushState({ littleWords: true, screen, groupId }, "");
   const changeTab = (nextTab: Tab) => {
+    if (nextTab === tab && !openGroupId && !quiz.length && !done) return;
     pushScreen(nextTab);
     setTab(nextTab);
-    setReviewGroupId(null);
+    setOpenGroupId(null);
+    setSheet(null);
+    if (nextTab === "practice") {
+      setQuiz([]);
+      setDone(false);
+    }
+  };
+  const openGroup = (groupId: string) => {
+    pushScreen("group", groupId);
+    setTab("book");
+    setOpenGroupId(groupId);
+    setSearch("");
+  };
+  const openSheet = (next: Sheet) => {
+    window.history.pushState({ ...navState(), littleWords: true, sheet: true }, "");
+    setSheet(next);
+  };
+  const closeSheet = () => {
+    if (navState().sheet) window.history.back();
+    else setSheet(null);
   };
   const start = () => {
     if (!pool.length) return;
     const q = [...pool].sort(() => Math.random() - 0.5);
-    pushScreen("quiz");
+    if (navState().screen !== "quiz") pushScreen("quiz");
+    setTab("practice");
     setQuiz(q);
     setIdx(0);
     setScore(0);
@@ -642,44 +633,60 @@ export default function App() {
     setTimeout(() => speak(quiz[n].en), 100);
     setTimeout(focusAnswer, 120);
   };
-  const saveWord = (e: FormEvent) => {
-    e.preventDefault();
-    if (!zh.trim() || !en.trim() || !wg) return;
-    setWords((s) => [
-      ...s,
-      {
-        id: crypto.randomUUID(),
-        zh: zh.trim(),
-        en: en.trim().toLowerCase(),
-        bpmf: bpmf.trim(),
-        group: wg,
-      },
-    ]);
-    setZh("");
-    setEn("");
-    setBpmf("");
-    setLookup("idle");
-  };
   const createGroup = (name: string) => {
-    if (!name.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return "";
+    const existing = groups.find((g) => g.name === trimmed);
+    if (existing) return existing.id;
     const id = crypto.randomUUID();
-    setGroups((s) => [
-      ...s,
-      {
-        id,
-        name: name.trim(),
-        color: ["#e59a55", "#62adc0", "#c77caf", "#81a864"][s.length % 4],
-      },
-    ]);
-    setWg(id);
+    setGroups((s) => {
+      const unused = GROUP_COLORS.find((c) => !s.some((g) => g.color === c));
+      return [
+        ...s,
+        { id, name: trimmed, color: unused || GROUP_COLORS[s.length % GROUP_COLORS.length] },
+      ];
+    });
     return id;
   };
-  const saveInlineGroup = () => {
-    if (createGroup(newInlineGroup)) {
-      setNewInlineGroup("");
-      setInlineGroup(false);
-    }
+  const saveWord = (word: Word, isNew: boolean) => {
+    lastGroup.current = word.group;
+    setWords((s) =>
+      isNew ? [...s, word] : s.map((w) => (w.id === word.id ? word : w)),
+    );
   };
+  const removeWord = (id: string) => {
+    const index = words.findIndex((w) => w.id === id);
+    const removed = words[index];
+    if (!removed) return;
+    setWords((s) => s.filter((w) => w.id !== id));
+    showToast(`已刪除「${removed.en}」`, () =>
+      setWords((s) =>
+        s.some((w) => w.id === removed.id)
+          ? s
+          : [...s.slice(0, index), removed, ...s.slice(index)],
+      ),
+    );
+  };
+  const renameGroup = (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setGroups((s) => s.map((g) => (g.id === id ? { ...g, name: trimmed } : g)));
+  };
+  const deleteGroup = (id: string, moveTo: string) => {
+    if (moveTo)
+      setWords((s) => s.map((w) => (w.group === id ? { ...w, group: moveTo } : w)));
+    else setWords((s) => s.filter((w) => w.group !== id));
+    setGroups((s) => s.filter((g) => g.id !== id));
+    setCompletedGroupIds((ids) => ids.filter((x) => x !== id));
+    setSelected((ids) => ids.filter((x) => x !== id));
+  };
+  const reorderGroups = (from: number, to: number) =>
+    setGroups((s) => {
+      const nextGroups = [...s];
+      const [moved] = nextGroups.splice(from, 1);
+      nextGroups.splice(to, 0, moved);
+      return nextGroups;
+    });
   const handleExport = () => {
     const blob = new Blob(
       [JSON.stringify({ words, groups, history, completedGroupIds }, null, 2)],
@@ -706,10 +713,10 @@ export default function App() {
           setCompletedGroupIds(
             Array.isArray(d.completedGroupIds) ? d.completedGroupIds : [],
           );
-          alert("還原成功！");
+          showToast("還原成功");
         }
       } catch {
-        alert("檔案格式錯誤");
+        showToast("檔案格式錯誤");
       }
     };
     reader.readAsText(file);
@@ -725,6 +732,24 @@ export default function App() {
         login={loginWithCode}
       />
     );
+  const openGroupData = openGroupId ? groups.find((g) => g.id === openGroupId) : undefined;
+  const defaultGroup =
+    (groups.some((g) => g.id === lastGroup.current) && lastGroup.current) ||
+    groups[0]?.id ||
+    "";
+  const query = search.trim().toLowerCase();
+  const found = query
+    ? words.filter(
+        (w) =>
+          w.en.toLowerCase().includes(query) ||
+          w.zh.includes(search.trim()) ||
+          w.bpmf.includes(search.trim()),
+      )
+    : [];
+  const selectedNames = groups.filter((g) => selected.includes(g.id));
+  const unfinishedSelected = selectedNames.filter(
+    (g) => !completedGroupIds.includes(g.id),
+  );
   return (
     <main key="word-app" className="notranslate">
       <Header
@@ -738,7 +763,6 @@ export default function App() {
         {tab === "practice" &&
           (done ? (
             <section className="result-card card">
-              <span className="eyebrow">PRACTICE COMPLETE</span>
               <CheckCircle2 className="result-icon" size={42} />
               <h2>完成練習！</h2>
               <p>這次答對 {score} / {quiz.length} 題</p>
@@ -752,9 +776,22 @@ export default function App() {
                 </span>
                 <span>{quiz.length} 個單字</span>
               </div>
+              {unfinishedSelected.length > 0 && (
+                <button
+                  type="button"
+                  className="mark-done"
+                  onClick={() => {
+                    setGroupCompleted(unfinishedSelected.map((g) => g.id), true);
+                    showToast(`已把 ${unfinishedSelected.map((g) => g.name).join("、")} 標記為已完成`);
+                  }}
+                >
+                  <CheckCircle2 size={18} />
+                  把「{unfinishedSelected.map((g) => g.name).join("、")}」標記為已完成
+                </button>
+              )}
               <div className="result-actions">
                 <button className="primary" onClick={start}>
-                  <RotateCcw size={18} /> 再練相同內容
+                  <RotateCcw size={18} /> 再練一次
                 </button>
                 <button
                   className="secondary"
@@ -767,78 +804,75 @@ export default function App() {
                     );
                   }}
                 >
-                  調整練習設定
+                  換別的分類
                 </button>
               </div>
             </section>
           ) : !quiz.length ? (
-            <section className="setup card">
-              <span className="eyebrow">WORD PRACTICE</span>
-              <h2>開始今天的練習</h2>
-              <p>
-                {groups.length === 0
-                  ? "目前沒有任何單字，請先去「單字」頁面新增資料！"
-                  : "依序完成下面兩個選擇，就可以開始練習。"}
-              </p>
-              {groups.length > 0 && (
-                <div className="practice-steps">
-                  <section className="setup-step">
-                    <div className="step-heading">
-                      <span className="step-number">1</span>
-                      <div>
-                        <h3>選擇要練習的分類</h3>
-                        <p>可同時選擇多個分類</p>
-                      </div>
-                      <small>已選 {selected.length} 個</small>
-                    </div>
-                    <div className="practice-groups">
-                      <div className="group-section-title">
-                        <span>尚未完成</span>
-                        <small>{pendingGroups.length} 個分類</small>
-                      </div>
-                      {pendingGroups.length ? (
-                        <div className="picks">
-                          {pendingGroups.map((group) => renderGroupPick(group))}
-                        </div>
-                      ) : (
-                        <p className="empty-groups">所有分類都已經完成一輪練習。</p>
-                      )}
-                      {completedGroups.length > 0 && (
-                        <div className="completed-groups">
-                          <button
-                            type="button"
-                            className="completed-toggle"
-                            aria-expanded={showCompleted}
-                            onClick={() => setShowCompleted((open) => !open)}
-                          >
-                            <span>
-                              <CheckCircle2 size={18} />
-                              已完成 {completedGroups.length} 個分類
-                            </span>
-                            {showCompleted ? (
-                              <ChevronUp size={18} />
-                            ) : (
-                              <ChevronDown size={18} />
-                            )}
-                          </button>
-                          {showCompleted && (
-                            <div className="picks completed-picks">
-                              {completedGroups.map((group) =>
-                                renderGroupPick(group, true),
-                              )}
-                            </div>
-                          )}
-                        </div>
+            <section className="practice-setup">
+              <div className="title">
+                <h2>開始練習</h2>
+              </div>
+              {groups.length === 0 ? (
+                <div className="card empty-start">
+                  <BookOpen size={30} />
+                  <p>還沒有單字，先到單字本新增分類和單字。</p>
+                  <button className="primary" onClick={() => changeTab("book")}>
+                    前往單字本 <ArrowRight size={18} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <section className="card setup-block">
+                    <div className="block-head">
+                      <h3>要練哪些分類</h3>
+                      {pendingGroups.length > 1 && (
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => {
+                            const ids = pendingGroups.filter((g) => countIn(g.id)).map((g) => g.id);
+                            setSelected((current) =>
+                              ids.every((id) => current.includes(id))
+                                ? current.filter((id) => !ids.includes(id))
+                                : [...new Set([...current, ...ids])],
+                            );
+                          }}
+                        >
+                          {pendingGroups.filter((g) => countIn(g.id)).every((g) => selected.includes(g.id))
+                            ? "全部取消"
+                            : "全選"}
+                        </button>
                       )}
                     </div>
+                    {pendingGroups.length ? (
+                      <div className="chip-grid">{pendingGroups.map(groupChip)}</div>
+                    ) : (
+                      <p className="empty-groups">所有分類都已完成，可以從下面挑一組複習。</p>
+                    )}
+                    {completedGroups.length > 0 && (
+                      <div className="completed-groups">
+                        <button
+                          type="button"
+                          className="completed-toggle"
+                          aria-expanded={showCompleted}
+                          onClick={() => setShowCompleted((open) => !open)}
+                        >
+                          <span>
+                            <CheckCircle2 size={18} />
+                            已完成 {completedGroups.length} 個分類
+                          </span>
+                          {showCompleted ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
+                        {showCompleted && (
+                          <div className="chip-grid">{completedGroups.map(groupChip)}</div>
+                        )}
+                      </div>
+                    )}
                   </section>
-                  <section className="setup-step">
-                    <div className="step-heading">
-                      <span className="step-number">2</span>
-                      <div>
-                        <h3>選擇練習方式</h3>
-                        <p>每次練習可選擇一種方式</p>
-                      </div>
+                  <section className="card setup-block">
+                    <div className="block-head">
+                      <h3>練習方式</h3>
                     </div>
                     <div className="mode-picker" aria-label="選擇練習方式">
                       <button
@@ -850,7 +884,7 @@ export default function App() {
                         <PenLine size={22} />
                         <span>
                           <b>完整拼字</b>
-                          <small>看中文，寫出完整英文</small>
+                          <small>看中文，寫出英文</small>
                         </span>
                       </button>
                       <button
@@ -862,29 +896,18 @@ export default function App() {
                         <Puzzle size={22} />
                         <span>
                           <b>字母填空</b>
-                          <small>直接填入單字中的空缺</small>
+                          <small>填入缺少的字母</small>
                         </span>
                       </button>
                     </div>
                   </section>
-                  <div className="start-panel">
-                    <div>
-                      <span className="step-number">3</span>
-                      <p>
-                        {pool.length
-                          ? `已準備 ${pool.length} 個單字`
-                          : "請先選擇至少一個分類"}
-                      </p>
-                    </div>
-                    <button
-                      className="primary"
-                      disabled={!pool.length}
-                      onClick={start}
-                    >
-                      開始練習 <ArrowRight size={18} />
+                  <div className="start-bar">
+                    <button className="primary" disabled={!pool.length} onClick={start}>
+                      {pool.length ? `開始練習 · ${pool.length} 個單字` : "先選一個分類"}
+                      {pool.length > 0 && <ArrowRight size={18} />}
                     </button>
                   </div>
-                </div>
+                </>
               )}
             </section>
           ) : (
@@ -924,7 +947,7 @@ export default function App() {
                       if (slot < 0)
                         return (
                           <span key={characterIndex}>
-                            {character === " " ? "\u00a0" : character}
+                            {character === " " ? " " : character}
                           </span>
                         );
                       return (
@@ -1061,300 +1084,134 @@ export default function App() {
               )}
             </section>
           ))}
-        {tab === "words" && (
-          <section>
-            <Title
-              en="MY WORDS"
-              title="我的單字"
-              p="輸入中文後查詢注音，英文請自行輸入。"
-            />
-            <div className="cols">
-              <form className="card editor" onSubmit={saveWord}>
-                <h3>＋ 新增單字</h3>
-                <label>
-                  中文
-                  <div className="searchrow">
-                    <input
-                      value={zh}
-                      onChange={(e) => {
-                        setZh(e.target.value);
-                        setBpmf("");
-                        setLookup("idle");
-                        lookupQuery.current = "";
-                      }}
-                      onBlur={() => void searchWord()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void searchWord();
-                        }
-                      }}
-                      placeholder="例如：蘋果"
-                    />
-                    <button
-                      type="button"
-                      className="searchbtn"
-                      onClick={searchWord}
-                      disabled={!zh.trim() || lookup === "loading"}
-                    >
-                      {lookup === "loading" ? "查詢中…" : "查注音"}
-                    </button>
-                  </div>
-                  {lookup === "found" && (
-                    <small className="lookupok">已帶出注音</small>
-                  )}
-                  {lookup === "missing" && (
-                    <small className="lookuperror">
-                      查不到注音，請手動輸入。
-                    </small>
-                  )}
-                </label>
-                <label>
-                  注音
-                  <input
-                    className="bpmf"
-                    value={bpmf}
-                    onChange={(e) => setBpmf(e.target.value)}
-                    placeholder="搜尋後自動帶出"
-                  />
-                </label>
-                <label>
-                  英文（自行輸入）
-                  <div className="englishsearch">
-                    <div className="with">
-                      <input
-                        value={en}
-                        onChange={(e) => setEn(e.target.value)}
-                        placeholder="例如：apple"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => speak(en)}
-                        aria-label="播放英文發音"
-                      >
-                        <Volume2 size={17} />
-                      </button>
-                    </div>
-                  </div>
-                </label>
-                <label>
-                  分類
-                  <div className="categoryrow">
-                    <select value={wg} onChange={(e) => setWg(e.target.value)}>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="addcat"
-                      onClick={() => setInlineGroup((v) => !v)}
-                    >
-                      ＋ 新增分類
-                    </button>
-                  </div>
-                </label>
-                {inlineGroup && (
-                  <div className="inlinegroup">
-                    <input
-                      autoFocus
-                      value={newInlineGroup}
-                      onChange={(e) => setNewInlineGroup(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          saveInlineGroup();
-                        }
-                      }}
-                      placeholder="新分類名稱"
-                    />
-                    <button type="button" onClick={saveInlineGroup}>
-                      建立
-                    </button>
-                    <button type="button" onClick={() => setInlineGroup(false)}>
-                      取消
-                    </button>
-                  </div>
-                )}
-                <button className="primary" disabled={groups.length === 0}>
-                  儲存單字
-                </button>
-                {groups.length === 0 && (
-                  <div
-                    style={{
-                      color: "var(--coral)",
-                      fontSize: 13,
-                      marginTop: 12,
-                    }}
-                  >
-                    請先新增分類才能儲存單字
-                  </div>
-                )}
-              </form>
-              <WordList
-                words={words}
-                groups={groups}
-                speak={speak}
-                move={(id, group) =>
-                  setWords((s) =>
-                    s.map((w) => (w.id === id ? { ...w, group } : w)),
-                  )
-                }
-                remove={(id) => setWords((s) => s.filter((w) => w.id !== id))}
-              />
-            </div>
-          </section>
-        )}
-        {tab === "groups" &&
-          (reviewGroupId && groups.some((g) => g.id === reviewGroupId) ? (
-            <GroupReview
-              group={groups.find((g) => g.id === reviewGroupId)!}
-              words={words.filter((w) => w.group === reviewGroupId)}
+        {tab === "book" &&
+          (openGroupData ? (
+            <GroupPage
+              group={openGroupData}
+              words={words.filter((w) => w.group === openGroupData.id)}
+              completed={completedGroupIds.includes(openGroupData.id)}
               speak={speak}
               back={() => window.history.back()}
+              addWord={() => openSheet({ kind: "word", group: openGroupData.id })}
+              editWord={(id) => openSheet({ kind: "word", id })}
+              rename={() => openSheet({ kind: "group-rename", id: openGroupData.id })}
+              remove={() => openSheet({ kind: "group-delete", id: openGroupData.id })}
+              toggleCompleted={() =>
+                setGroupCompleted(
+                  [openGroupData.id],
+                  !completedGroupIds.includes(openGroupData.id),
+                )
+              }
               practice={() => {
-                setSelected([reviewGroupId]);
+                setSelected([openGroupData.id]);
                 setQuiz([]);
                 setDone(false);
-                setReviewGroupId(null);
+                setOpenGroupId(null);
                 pushScreen("practice");
                 setTab("practice");
               }}
             />
           ) : (
-            <section>
-              <Title
-                en="WORD GROUPS"
-                title="單字分組"
-                p="點選分類可查看單字並先自行複習。"
-              />
-              <form
-                className="addgroup card"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (createGroup(ng)) setNg("");
-                }}
-              >
-                <input
-                  value={ng}
-                  onChange={(e) => setNg(e.target.value)}
-                  placeholder="輸入新分組名稱"
-                />
-                <button className="primary">＋ 新增分組</button>
-              </form>
-              <div className="groupgrid">
-                {groups.map((g) => (
-                  <article
-                    className="card groupcard"
-                    key={g.id}
-                    style={{ "--tone": g.color } as React.CSSProperties}
-                  >
-                    <button
-                      className="group-open"
-                      onClick={() => {
-                        pushScreen("review", g.id);
-                        setReviewGroupId(g.id);
-                      }}
-                    >
-                      <span>▰</span>
-                      <div>
-                        <h3>{g.name}</h3>
-                        <p>
-                          {words.filter((w) => w.group === g.id).length} 個單字
-                          · 點選查看
-                        </p>
-                      </div>
-                      <ArrowRight size={20} />
-                    </button>
-                    <button
-                      className="group-delete"
-                      aria-label={`刪除${g.name}分類`}
-                      disabled={groups.length <= 1}
-                      onClick={() => {
-                        const f = groups.find((x) => x.id !== g.id);
-                        if (!f) return;
-                        setWords((s) =>
-                          s.map((w) =>
-                            w.group === g.id ? { ...w, group: f.id } : w,
-                          ),
-                        );
-                        setGroups((s) => s.filter((x) => x.id !== g.id));
-                        setCompletedGroupIds((ids) =>
-                          ids.filter((id) => id !== g.id),
-                        );
-                        setWg(f.id);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </article>
-                ))}
+            <section className="book">
+              <div className="book-head">
+                <h2>單字本</h2>
+                <button
+                  className="primary"
+                  disabled={!groups.length}
+                  onClick={() => openSheet({ kind: "word", group: defaultGroup })}
+                >
+                  <Plus size={18} /> 新增單字
+                </button>
               </div>
+              {words.length > 0 && (
+                <label className="search-box">
+                  <Search size={18} />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="找單字（中文或英文）"
+                    aria-label="搜尋單字"
+                  />
+                  {search && (
+                    <button type="button" aria-label="清除搜尋" onClick={() => setSearch("")}>
+                      <X size={16} />
+                    </button>
+                  )}
+                </label>
+              )}
+              {query ? (
+                <div className="card word-rows">
+                  {found.length ? (
+                    found.map((w) => (
+                      <WordRow
+                        key={w.id}
+                        word={w}
+                        groupName={groups.find((g) => g.id === w.group)?.name}
+                        speak={speak}
+                        edit={() => openSheet({ kind: "word", id: w.id })}
+                      />
+                    ))
+                  ) : (
+                    <p className="empty-note">找不到「{search.trim()}」</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="group-list">
+                    {groups.map((g) => (
+                      <button
+                        key={g.id}
+                        className="card group-row"
+                        style={{ "--tone": g.color } as React.CSSProperties}
+                        onClick={() => openGroup(g.id)}
+                      >
+                        <i />
+                        <span>
+                          <b>{g.name}</b>
+                          <small>
+                            {countIn(g.id)} 個單字
+                            {completedGroupIds.includes(g.id) && (
+                              <em>
+                                <CheckCircle2 size={13} /> 已完成
+                              </em>
+                            )}
+                          </small>
+                        </span>
+                        <ChevronRight size={20} />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="book-actions">
+                    <button className="secondary" onClick={() => openSheet({ kind: "group-new" })}>
+                      <Plus size={17} /> 新增分類
+                    </button>
+                    {groups.length > 1 && (
+                      <button className="secondary" onClick={() => openSheet({ kind: "group-order" })}>
+                        <ListOrdered size={17} /> 調整順序
+                      </button>
+                    )}
+                  </div>
+                  {groups.length === 0 && (
+                    <p className="empty-note">先新增一個分類，例如「水果」或「第一課」。</p>
+                  )}
+                </>
+              )}
             </section>
           ))}
         {tab === "history" && (
           <section>
-            <Title
-              en="HISTORY & BACKUP"
-              title="紀錄與設定"
-              p="查看過去的練習成績，或備份你的資料。"
-            />
-            <div className="card settings-card" style={{ marginBottom: 32 }}>
-              <h3>備份與還原</h3>
-              <p>
-                將所有的單字、分組與練習紀錄匯出為備份檔，或從備份檔還原資料。
-              </p>
-              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                <button className="primary" onClick={handleExport}>
-                  匯出備份 (JSON)
-                </button>
-                <label
-                  className="primary"
-                  style={{ background: "var(--muted)", cursor: "pointer" }}
-                >
-                  匯入還原
-                  <input
-                    type="file"
-                    accept=".json"
-                    style={{ display: "none" }}
-                    onChange={handleImport}
-                  />
-                </label>
-              </div>
+            <div className="title">
+              <h2>練習紀錄</h2>
             </div>
-            <h3
-              style={{
-                marginBottom: 18,
-                color: "var(--ink)",
-                fontSize: 20,
-                fontWeight: 700,
-              }}
-            >
-              練習紀錄
-            </h3>
             {history.length === 0 ? (
-              <div
-                className="card"
-                style={{
-                  padding: 40,
-                  textAlign: "center",
-                  color: "var(--muted)",
-                }}
-              >
-                尚無練習紀錄
-              </div>
+              <div className="card empty-note big">還沒有練習紀錄</div>
             ) : (
               <div className="history-list">
                 {history.map((h) => (
                   <article key={h.id} className="card history-card">
                     <div>
-                      <h3>{new Date(h.timestamp).toLocaleString()}</h3>
-                      <p>
-                        練習主題：
-                        {h.groupNames.length ? h.groupNames.join(", ") : "全部"}
-                      </p>
+                      <h3>{h.groupNames.length ? h.groupNames.join("、") : "全部"}</h3>
+                      <p>{new Date(h.timestamp).toLocaleString()}</p>
                     </div>
                     <div className="history-score">
                       <b>{h.score}</b> / {h.total}
@@ -1363,12 +1220,122 @@ export default function App() {
                 ))}
               </div>
             )}
+            <div className="card settings-card">
+              <h3>備份與還原</h3>
+              <p>把單字、分類和練習紀錄存成檔案，或從檔案還原。</p>
+              <div className="backup-actions">
+                <button className="secondary" onClick={handleExport}>
+                  匯出備份
+                </button>
+                <label className="secondary">
+                  從檔案還原
+                  <input type="file" accept=".json" hidden onChange={handleImport} />
+                </label>
+              </div>
+            </div>
           </section>
         )}
       </div>
       <footer>
         已使用代號「{activeCode}」同步到雲端 · 發音由瀏覽器語音功能提供
       </footer>
+      {sheet?.kind === "word" && (
+        <WordSheet
+          key={sheet.id || "new"}
+          word={sheet.id ? words.find((w) => w.id === sheet.id) : undefined}
+          group={sheet.group || defaultGroup}
+          groups={groups}
+          speak={speak}
+          createGroup={createGroup}
+          close={closeSheet}
+          save={(word, isNew) => {
+            saveWord(word, isNew);
+            if (isNew) showToast(`已加入「${word.en}」`);
+            else closeSheet();
+          }}
+          remove={(id) => {
+            closeSheet();
+            removeWord(id);
+          }}
+        />
+      )}
+      {sheet?.kind === "group-new" && (
+        <NameSheet
+          title="新增分類"
+          initial=""
+          action="建立"
+          close={closeSheet}
+          save={(name) => {
+            const id = createGroup(name);
+            closeSheet();
+            if (id) showToast(`已新增「${name.trim()}」`);
+          }}
+        />
+      )}
+      {sheet?.kind === "group-rename" && (
+        <NameSheet
+          title="分類名稱"
+          initial={groups.find((g) => g.id === sheet.id)?.name || ""}
+          action="儲存"
+          close={closeSheet}
+          save={(name) => {
+            renameGroup(sheet.id, name);
+            closeSheet();
+          }}
+        />
+      )}
+      {sheet?.kind === "group-delete" && (
+        <DeleteGroupSheet
+          group={groups.find((g) => g.id === sheet.id)!}
+          count={countIn(sheet.id)}
+          others={groups.filter((g) => g.id !== sheet.id)}
+          close={closeSheet}
+          confirm={(moveTo) => {
+            const name = groups.find((g) => g.id === sheet.id)?.name;
+            deleteGroup(sheet.id, moveTo);
+            setSheet(null);
+            setOpenGroupId(null);
+            window.history.go(-2);
+            showToast(`已刪除「${name}」`);
+          }}
+        />
+      )}
+      {sheet?.kind === "group-order" && (
+        <SheetFrame title="調整分類順序" close={closeSheet}>
+          <p className="sheet-note">按住右邊把手上下拖曳</p>
+          <Sortable
+            items={groups}
+            getKey={(g) => g.id}
+            onMove={reorderGroups}
+            className="order-list"
+            renderItem={(g, _i, handle) => (
+              <div className="order-row" style={{ "--tone": g.color } as React.CSSProperties}>
+                <i />
+                <b>{g.name}</b>
+                <small>{countIn(g.id)}</small>
+                <span {...handle} className="drag-handle" aria-label={`拖曳排序 ${g.name}`}>
+                  <GripVertical size={20} />
+                </span>
+              </div>
+            )}
+          />
+        </SheetFrame>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          <span>{toast.message}</span>
+          {toast.undo && (
+            <button
+              onClick={() => {
+                toast.undo?.();
+                setToast(null);
+              }}
+            >
+              復原
+            </button>
+          )}
+        </div>
+      )}
     </main>
   );
 }
@@ -1420,18 +1387,19 @@ function Header({
       <nav>
         {(
           [
-            ["practice", "練習"],
-            ["words", "單字"],
-            ["groups", "分組"],
-            ["history", "紀錄"],
+            ["practice", "練習", PenLine],
+            ["book", "單字本", BookOpen],
+            ["history", "紀錄", HistoryIcon],
           ] as const
-        ).map((x) => (
+        ).map(([key, label, Icon]) => (
           <button
-            key={x[0]}
-            className={tab === x[0] ? "active" : ""}
-            onClick={() => setTab(x[0])}
+            key={key}
+            className={tab === key ? "active" : ""}
+            aria-current={tab === key ? "page" : undefined}
+            onClick={() => setTab(key)}
           >
-            {x[1]}
+            <Icon size={18} />
+            {label}
           </button>
         ))}
       </nav>
@@ -1460,7 +1428,6 @@ function CodeLogin({
         <div className="login-mark">
           <Cloud size={28} />
         </div>
-        <span className="eyebrow">CLOUD WORDS</span>
         <h1>登入小小單字島</h1>
         <p>輸入自己的代號，單字、分類和練習紀錄就會在手機與電腦同步。</p>
         <form
@@ -1527,129 +1494,459 @@ function CodeLogin({
     </main>
   );
 }
-function Title({ en, title, p }: { en: string; title: string; p: string }) {
-  return (
-    <div className="title">
-      <span className="eyebrow">{en}</span>
-      <h2>{title}</h2>
-      <p>{p}</p>
-    </div>
-  );
-}
-function WordList({
-  words,
-  groups,
+function WordRow({
+  word,
+  groupName,
   speak,
-  move,
-  remove,
+  edit,
 }: {
-  words: Word[];
-  groups: Group[];
+  word: Word;
+  groupName?: string;
   speak: (s: string) => void;
-  move: (id: string, group: string) => void;
-  remove: (id: string) => void;
+  edit: () => void;
 }) {
   return (
-    <div className="wordlist card">
-      <div className="listhead">
-        <h3>全部單字</h3>
-        <span>{words.length} 個</span>
-      </div>
-      {words.map((w) => (
-        <article key={w.id}>
-          <button
-            className="sound"
-            aria-label={`播放${w.en}發音`}
-            onClick={() => speak(w.en)}
-          >
-            <Volume2 size={18} />
-          </button>
-          <div>
-            <b>{w.en}</b>
-            <span>
-              {w.zh} <small className="bpmf">{w.bpmf}</small>
-            </span>
-          </div>
-          <select
-            className="word-group-select"
-            aria-label={`移動${w.en}到其他分類`}
-            value={w.group}
-            onChange={(e) => move(w.id, e.target.value)}
-          >
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="delete"
-            aria-label={`刪除${w.en}`}
-            onClick={() => remove(w.id)}
-          >
-            <Trash2 size={17} />
-          </button>
-        </article>
-      ))}
+    <div className="word-row">
+      <button className="sound" aria-label={`播放${word.en}發音`} onClick={() => speak(word.en)}>
+        <Volume2 size={18} />
+      </button>
+      <button className="word-main" onClick={edit} aria-label={`編輯 ${word.en}`}>
+        <b>{word.en}</b>
+        <span>
+          {word.zh} <small className="bpmf">{word.bpmf}</small>
+          {groupName && <em>{groupName}</em>}
+        </span>
+      </button>
+      <Pencil size={15} className="row-hint" aria-hidden="true" />
     </div>
   );
 }
-function GroupReview({
+function GroupPage({
   group,
   words,
+  completed,
   speak,
   back,
+  addWord,
+  editWord,
+  rename,
+  remove,
+  toggleCompleted,
   practice,
 }: {
   group: Group;
   words: Word[];
+  completed: boolean;
   speak: (s: string) => void;
   back: () => void;
+  addWord: () => void;
+  editWord: (id: string) => void;
+  rename: () => void;
+  remove: () => void;
+  toggleCompleted: () => void;
   practice: () => void;
 }) {
   return (
-    <section className="group-review">
+    <section className="group-page" style={{ "--tone": group.color } as React.CSSProperties}>
       <button className="back-button" onClick={back}>
         <ArrowLeft size={18} />
-        返回分組
+        單字本
       </button>
-      <div className="review-heading">
-        <div>
-          <span className="eyebrow">GROUP REVIEW</span>
+      <div className="group-title">
+        <button className="title-edit" onClick={rename} aria-label={`修改分類名稱 ${group.name}`}>
+          <i />
           <h2>{group.name}</h2>
-          <p>先看看中文與英文，也可以播放發音自行複習。</p>
-        </div>
+          <Pencil size={16} />
+        </button>
+        <p>
+          {words.length} 個單字{completed ? " · 已完成" : ""}
+        </p>
+      </div>
+      <div className="group-actions">
         <button className="primary" disabled={!words.length} onClick={practice}>
-          前往測驗
-          <ArrowRight size={18} />
+          練習這組 <ArrowRight size={18} />
+        </button>
+        <button className="secondary" onClick={addWord}>
+          <Plus size={17} /> 新增單字
         </button>
       </div>
       {words.length === 0 ? (
-        <div className="card review-empty">這個分類還沒有單字</div>
+        <div className="card empty-note big">這個分類還沒有單字</div>
       ) : (
-        <div className="review-grid">
+        <div className="card word-rows">
           {words.map((w) => (
-            <article
-              className="card review-word"
-              key={w.id}
-              style={{ "--tone": group.color } as React.CSSProperties}
-            >
-              <button
-                className="review-sound"
-                aria-label={`播放${w.en}發音`}
-                onClick={() => speak(w.en)}
-              >
-                <Volume2 size={20} />
-              </button>
-              <div>
-                <b>{w.en}</b>
-                <span>{w.zh}</span>
-                <small className="bpmf">{w.bpmf}</small>
-              </div>
-            </article>
+            <WordRow key={w.id} word={w} speak={speak} edit={() => editWord(w.id)} />
           ))}
         </div>
       )}
+      <div className="group-footer">
+        <button className="link-button" onClick={toggleCompleted}>
+          {completed ? <RotateCcw size={16} /> : <CheckCircle2 size={16} />}
+          {completed ? "移回尚未完成" : "標記為已完成"}
+        </button>
+        <button className="link-button danger" onClick={remove}>
+          <Trash2 size={16} /> 刪除分類
+        </button>
+      </div>
     </section>
+  );
+}
+function SheetFrame({
+  title,
+  close,
+  children,
+}: {
+  title: string;
+  close: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <section className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="sheet-head">
+          <h3>{title}</h3>
+          <button type="button" className="icon-button" onClick={close} aria-label="關閉">
+            <X size={20} />
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+function NameSheet({
+  title,
+  initial,
+  action,
+  close,
+  save,
+}: {
+  title: string;
+  initial: string;
+  action: string;
+  close: () => void;
+  save: (name: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  return (
+    <SheetFrame title={title} close={close}>
+      <form
+        className="sheet-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) save(name);
+        }}
+      >
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：水果、第一課" maxLength={30} />
+        <button className="primary" disabled={!name.trim()}>
+          {action}
+        </button>
+      </form>
+    </SheetFrame>
+  );
+}
+function DeleteGroupSheet({
+  group,
+  count,
+  others,
+  close,
+  confirm,
+}: {
+  group: Group;
+  count: number;
+  others: Group[];
+  close: () => void;
+  confirm: (moveTo: string) => void;
+}) {
+  const [target, setTarget] = useState(others[0]?.id || "");
+  return (
+    <SheetFrame title={`刪除「${group.name}」？`} close={close}>
+      <div className="sheet-form">
+        {count > 0 ? (
+          <label>
+            裡面的 {count} 個單字
+            <select value={target} onChange={(e) => setTarget(e.target.value)}>
+              {others.map((g) => (
+                <option key={g.id} value={g.id}>
+                  移到「{g.name}」
+                </option>
+              ))}
+              <option value="">一起刪除</option>
+            </select>
+          </label>
+        ) : (
+          <p className="sheet-note">這個分類是空的。</p>
+        )}
+        <div className="sheet-buttons">
+          <button type="button" className="secondary" onClick={close}>
+            取消
+          </button>
+          <button type="button" className="danger-button" onClick={() => confirm(count ? target : "")}>
+            刪除分類
+          </button>
+        </div>
+      </div>
+    </SheetFrame>
+  );
+}
+function WordSheet({
+  word,
+  group,
+  groups,
+  speak,
+  createGroup,
+  close,
+  save,
+  remove,
+}: {
+  word?: Word;
+  group: string;
+  groups: Group[];
+  speak: (s: string) => void;
+  createGroup: (name: string) => string;
+  close: () => void;
+  save: (word: Word, isNew: boolean) => void;
+  remove: (id: string) => void;
+}) {
+  const [zh, setZh] = useState(word?.zh || ""),
+    [en, setEn] = useState(word?.en || ""),
+    [bpmf, setBpmf] = useState(word?.bpmf || ""),
+    [wg, setWg] = useState(word?.group || group),
+    [newGroup, setNewGroup] = useState<string | null>(null),
+    [lookup, setLookup] = useState<"idle" | "loading" | "found" | "missing">("idle");
+  const lookupQuery = useRef(word?.zh || "");
+  const zhInput = useRef<HTMLInputElement>(null);
+  const fetchBopomofo = async (text: string) => {
+    const r = await fetch(`https://www.moedict.tw/a/${encodeURIComponent(text)}.json`);
+    if (!r.ok) return "";
+    const d = await r.json();
+    return (d.h?.[0]?.b || "") as string;
+  };
+  const searchWord = async () => {
+    const q = zh.trim();
+    if (!q || lookupQuery.current === q) return;
+    lookupQuery.current = q;
+    setLookup("loading");
+    const local = dictionary.find((x) => x[0] === q);
+    if (local) {
+      setBpmf(local[2]);
+      if (!en.trim()) setEn(local[1]);
+      setLookup("found");
+      return;
+    }
+    try {
+      let pronunciation = await fetchBopomofo(q);
+      if (!pronunciation && [...q].length > 1) {
+        const parts = await Promise.all([...q].map(fetchBopomofo));
+        if (parts.every(Boolean)) pronunciation = parts.join(" ");
+      }
+      if (lookupQuery.current !== q) return;
+      if (pronunciation) {
+        setBpmf(pronunciation);
+        setLookup("found");
+      } else setLookup("missing");
+    } catch {
+      if (lookupQuery.current === q) setLookup("missing");
+    }
+  };
+  const groupId = newGroup !== null ? "" : wg;
+  const canSave = zh.trim() && en.trim() && (groupId || (newGroup || "").trim());
+  return (
+    <SheetFrame title={word ? "編輯單字" : "新增單字"} close={close}>
+      <form
+        className="sheet-form word-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!canSave) return;
+          const target = newGroup !== null ? createGroup(newGroup) : wg;
+          if (!target) return;
+          save(
+            {
+              id: word?.id || crypto.randomUUID(),
+              zh: zh.trim(),
+              en: en.trim().toLowerCase(),
+              bpmf: bpmf.trim(),
+              group: target,
+            },
+            !word,
+          );
+          if (!word) {
+            setZh("");
+            setEn("");
+            setBpmf("");
+            setLookup("idle");
+            lookupQuery.current = "";
+            setWg(target);
+            setNewGroup(null);
+            zhInput.current?.focus();
+          }
+        }}
+      >
+        <label>
+          中文
+          <input
+            ref={zhInput}
+            autoFocus={!word}
+            value={zh}
+            onChange={(e) => {
+              setZh(e.target.value);
+              setLookup("idle");
+              lookupQuery.current = "";
+            }}
+            onBlur={() => void searchWord()}
+            placeholder="例如：蘋果"
+          />
+        </label>
+        <label>
+          注音
+          <input
+            className="bpmf"
+            value={bpmf}
+            onChange={(e) => setBpmf(e.target.value)}
+            placeholder={lookup === "loading" ? "查詢中…" : "輸入中文後自動帶出"}
+          />
+          {lookup === "missing" && <small className="lookuperror">查不到注音，請手動輸入</small>}
+        </label>
+        <label>
+          英文
+          <div className="with">
+            <input
+              value={en}
+              onChange={(e) => setEn(e.target.value)}
+              placeholder="例如：apple"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button type="button" onClick={() => speak(en)} aria-label="播放英文發音" disabled={!en.trim()}>
+              <Volume2 size={17} />
+            </button>
+          </div>
+        </label>
+        <label>
+          分類
+          {newGroup === null ? (
+            <select
+              value={wg}
+              onChange={(e) => {
+                if (e.target.value === "__new") setNewGroup("");
+                else setWg(e.target.value);
+              }}
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+              <option value="__new">＋ 新增分類…</option>
+            </select>
+          ) : (
+            <div className="inlinegroup">
+              <input
+                autoFocus
+                value={newGroup}
+                onChange={(e) => setNewGroup(e.target.value)}
+                placeholder="新分類名稱"
+                maxLength={30}
+              />
+              <button type="button" onClick={() => setNewGroup(null)}>
+                取消
+              </button>
+            </div>
+          )}
+        </label>
+        <button className="primary" disabled={!canSave}>
+          {word ? "儲存" : "加入"}
+        </button>
+        {word && (
+          <button type="button" className="link-button danger center" onClick={() => remove(word.id)}>
+            <Trash2 size={16} /> 刪除這個單字
+          </button>
+        )}
+      </form>
+    </SheetFrame>
+  );
+}
+/** Reorders rows by dragging a handle; works with touch, mouse and pen. */
+function Sortable<T>({
+  items,
+  getKey,
+  onMove,
+  renderItem,
+  className = "",
+}: {
+  items: T[];
+  getKey: (item: T, index: number) => string;
+  onMove: (from: number, to: number) => void;
+  renderItem: (
+    item: T,
+    index: number,
+    handle: React.HTMLAttributes<HTMLElement>,
+  ) => React.ReactNode;
+  className?: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const state = useRef<{
+    from: number;
+    to: number;
+    dy: number;
+    startY: number;
+    rects: DOMRect[];
+    size: number;
+  } | null>(null);
+  const [drag, setDrag] = useState<{ from: number; to: number; dy: number; size: number } | null>(null);
+  const begin = (e: React.PointerEvent<HTMLElement>, index: number) => {
+    if (e.button !== 0 || !box.current) return;
+    const rects = [...box.current.children].map((r) => r.getBoundingClientRect());
+    const gap = rects.length > 1 ? Math.max(0, rects[1].top - rects[0].bottom) : 0;
+    state.current = { from: index, to: index, dy: 0, startY: e.clientY, rects, size: rects[index].height + gap };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ from: index, to: index, dy: 0, size: state.current.size });
+  };
+  const move = (e: React.PointerEvent<HTMLElement>) => {
+    const s = state.current;
+    if (!s) return;
+    s.dy = e.clientY - s.startY;
+    const r = s.rects[s.from];
+    const center = r.top + r.height / 2 + s.dy;
+    let to = s.from;
+    s.rects.forEach((q, i) => {
+      const mid = q.top + q.height / 2;
+      if (i < s.from && center < mid) to = Math.min(to, i);
+      if (i > s.from && center > mid) to = Math.max(to, i);
+    });
+    s.to = to;
+    setDrag({ from: s.from, to, dy: s.dy, size: s.size });
+  };
+  const end = () => {
+    const s = state.current;
+    state.current = null;
+    setDrag(null);
+    if (s && s.to !== s.from) onMove(s.from, s.to);
+  };
+  const shift = (i: number) => {
+    if (!drag) return 0;
+    if (i === drag.from) return drag.dy;
+    if (drag.from < drag.to && i > drag.from && i <= drag.to) return -drag.size;
+    if (drag.to < drag.from && i >= drag.to && i < drag.from) return drag.size;
+    return 0;
+  };
+  return (
+    <div ref={box} className={className}>
+      {items.map((item, i) => (
+        <div
+          key={getKey(item, i)}
+          className={`sortable-row${drag && drag.from === i ? " is-dragging" : ""}`}
+          style={{ transform: `translateY(${shift(i)}px)` }}
+        >
+          {renderItem(item, i, {
+            onPointerDown: (e) => begin(e, i),
+            onPointerMove: move,
+            onPointerUp: end,
+            onPointerCancel: end,
+          })}
+        </div>
+      ))}
+    </div>
   );
 }
