@@ -1557,6 +1557,26 @@ nav button {
   background: var(--tone);
   border-color: var(--tone);
 }
+.chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.chip-done {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #9db3aa;
+}
+.chip-done:hover,
+.chip-done:focus-visible {
+  background: #eef5f1;
+  color: #397d69;
+}
 .group-chip:disabled {
   opacity: 0.45;
   cursor: not-allowed;

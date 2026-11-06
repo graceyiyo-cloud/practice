@@ -496,20 +496,34 @@ export default function App() {
   const groupChip = (group: Group) => {
     const on = selected.includes(group.id);
     const count = countIn(group.id);
+    const isDone = completedGroupIds.includes(group.id);
     return (
-      <button
-        key={group.id}
-        type="button"
-        className={`group-chip${on ? " chosen" : ""}`}
-        style={{ "--tone": group.color } as React.CSSProperties}
-        aria-pressed={on}
-        disabled={!count}
-        onClick={() => toggleSelected(group.id)}
-      >
-        <span className="chip-check">{on ? <Check size={14} /> : null}</span>
-        <b>{group.name}</b>
-        <small>{count}</small>
-      </button>
+      <span key={group.id} className="chip-wrap">
+        <button
+          type="button"
+          className={`group-chip${on ? " chosen" : ""}`}
+          style={{ "--tone": group.color } as React.CSSProperties}
+          aria-pressed={on}
+          disabled={!count}
+          onClick={() => toggleSelected(group.id)}
+        >
+          <span className="chip-check">{on ? <Check size={14} /> : null}</span>
+          <b>{group.name}</b>
+          <small>{count}</small>
+        </button>
+        <button
+          type="button"
+          className="chip-done"
+          aria-label={isDone ? `將${group.name}移回待練習` : `將${group.name}收進已完成`}
+          title={isDone ? "移回待練習" : "收進已完成"}
+          onClick={() => {
+            setGroupCompleted([group.id], !isDone);
+            showToast(isDone ? `「${group.name}」已移回待練習` : `「${group.name}」已收進已完成`);
+          }}
+        >
+          {isDone ? <RotateCcw size={16} /> : <CheckCircle2 size={17} />}
+        </button>
+      </span>
     );
   };
   const focusAnswer = () => {
