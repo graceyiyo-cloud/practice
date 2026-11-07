@@ -199,8 +199,15 @@ const makeLetterGap = (word: string, seedText = word) => {
     .map(({ index }) => index);
   const letterCount = letterIndexes.length;
   const missingCount = letterCount >= 7 ? 3 : letterCount >= 4 ? 2 : 1;
+  // Short words (≤5 letters) keep only the first letter as a hint and may have
+  // adjacent blanks; otherwise words like "red" or "green" have one fixed layout.
+  const shortWord = letterCount <= 5;
   const usableIndexes =
-    letterCount > 2 ? letterIndexes.slice(1, -1) : letterIndexes;
+    letterCount <= 2
+      ? letterIndexes
+      : shortWord
+        ? letterIndexes.slice(1)
+        : letterIndexes.slice(1, -1);
   const safeCount = Math.min(missingCount, usableIndexes.length);
   let seed = [...seedText].reduce(
     (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
@@ -226,11 +233,12 @@ const makeLetterGap = (word: string, seedText = word) => {
   // Re-draw instead of forcing one fixed layout, so every spread-out pattern can appear.
   for (
     let tries = 0;
-    safeCount > 1 && isConsecutive(missingIndexes) && tries < 30;
+    !shortWord && safeCount > 1 && isConsecutive(missingIndexes) && tries < 30;
     tries += 1
   )
     missingIndexes = pick();
   if (
+    !shortWord &&
     safeCount > 1 &&
     isConsecutive(missingIndexes) &&
     usableIndexes.length > safeCount
