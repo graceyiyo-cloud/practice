@@ -18,6 +18,27 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 
 console.log("main.tsx is executing!");
 
+// Switch to a newly deployed version without needing a second app launch.
+// Reload only right after opening or while the app is in the background, so a
+// practice round in progress is never interrupted.
+if ('serviceWorker' in navigator) {
+  const openedAt = Date.now();
+  const hadController = !!navigator.serviceWorker.controller;
+  let pendingReload = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return; // first install, page is already current
+    if (document.hidden || Date.now() - openedAt < 15000) window.location.reload();
+    else pendingReload = true;
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (pendingReload) window.location.reload();
+      return;
+    }
+    navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+  });
+}
+
 const root = document.getElementById('root');
 if (!root) {
   console.error("No root element found!");
