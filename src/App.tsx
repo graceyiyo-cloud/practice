@@ -206,20 +206,35 @@ const makeLetterGap = (word: string, seedText = word) => {
     (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
     2166136261,
   );
-  const shuffled = [...usableIndexes];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    const swapIndex = seed % (index + 1);
-    [shuffled[index], shuffled[swapIndex]] = [
-      shuffled[swapIndex],
-      shuffled[index],
-    ];
-  }
-  let missingIndexes = shuffled.slice(0, safeCount).sort((a, b) => a - b);
-  const allConsecutive = missingIndexes.every(
-    (value, index) => index === 0 || value === missingIndexes[index - 1] + 1,
-  );
-  if (safeCount > 1 && allConsecutive && usableIndexes.length > safeCount) {
+  const pick = () => {
+    const shuffled = [...usableIndexes];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const swapIndex = seed % (index + 1);
+      [shuffled[index], shuffled[swapIndex]] = [
+        shuffled[swapIndex],
+        shuffled[index],
+      ];
+    }
+    return shuffled.slice(0, safeCount).sort((a, b) => a - b);
+  };
+  const isConsecutive = (indexes: number[]) =>
+    indexes.every(
+      (value, index) => index === 0 || value === indexes[index - 1] + 1,
+    );
+  let missingIndexes = pick();
+  // Re-draw instead of forcing one fixed layout, so every spread-out pattern can appear.
+  for (
+    let tries = 0;
+    safeCount > 1 && isConsecutive(missingIndexes) && tries < 30;
+    tries += 1
+  )
+    missingIndexes = pick();
+  if (
+    safeCount > 1 &&
+    isConsecutive(missingIndexes) &&
+    usableIndexes.length > safeCount
+  ) {
     missingIndexes = Array.from({ length: safeCount }, (_, index) =>
       usableIndexes[
         Math.round((index * (usableIndexes.length - 1)) / (safeCount - 1))
@@ -248,6 +263,8 @@ export default function App() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [completedGroupIds, setCompletedGroupIds] = useState<string[]>([]);
   const [quiz, setQuiz] = useState<Word[]>([]),
+    // New random salt per practice round so the blanked letters move each time.
+    [gapSalt, setGapSalt] = useState(""),
     [idx, setIdx] = useState(0),
     [answer, setAnswer] = useState(""),
     [gapAnswers, setGapAnswers] = useState<string[]>([]),
@@ -468,7 +485,7 @@ export default function App() {
     ),
     cur = quiz[idx],
     letterGap = cur
-      ? makeLetterGap(cur.en, `${cur.id}:${idx}`)
+      ? makeLetterGap(cur.en, `${cur.id}:${idx}:${gapSalt}`)
       : { prompt: "", answer: "", characters: [], missingIndexes: [] };
   const countIn = (groupId: string) =>
     words.filter((word) => word.group === groupId).length;
@@ -573,6 +590,7 @@ export default function App() {
     if (navState().screen !== "quiz") pushScreen("quiz");
     setTab("practice");
     setQuiz(q);
+    setGapSalt(Math.random().toString(36).slice(2));
     setIdx(0);
     setScore(0);
     setAnswer("");
